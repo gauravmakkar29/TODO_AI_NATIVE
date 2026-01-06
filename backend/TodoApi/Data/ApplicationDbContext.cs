@@ -17,6 +17,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Tag> Tags { get; set; }
     public DbSet<TodoCategory> TodoCategories { get; set; }
     public DbSet<TodoTag> TodoTags { get; set; }
+    public DbSet<FilterPreset> FilterPresets { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -98,6 +99,22 @@ public class ApplicationDbContext : DbContext
                   .WithMany(t => t.TodoTags)
                   .HasForeignKey(e => e.TagId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<FilterPreset>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasOne(e => e.User)
+                  .WithMany()
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.SearchQuery).HasMaxLength(500);
+            entity.Property(e => e.CategoryIds).HasMaxLength(500);
+            entity.Property(e => e.TagIds).HasMaxLength(500);
+            entity.Property(e => e.SortBy).HasMaxLength(50);
+            entity.Property(e => e.SortOrder).HasMaxLength(10);
+            entity.Property(e => e.CreatedAt).IsRequired();
         });
     }
 }

@@ -249,6 +249,131 @@ public class TodoService : ITodoService
         return todos.Select(t => MapToDto(t));
     }
 
+    public async Task<SearchFilterResponse> SearchAndFilterTodosAsync(int userId, SearchFilterRequest request)
+    {
+        var query = _context.Todos
+            .Where(t => t.UserId == userId)
+            .Include(t => t.TodoCategories)
+                .ThenInclude(tc => tc.Category)
+            .Include(t => t.TodoTags)
+                .ThenInclude(tt => tt.Tag)
+            .AsQueryable();
+
+        // Text search - search in title, description, category names, and tag names
+        if (!string.IsNullOrWhiteSpace(request.SearchQuery))
+        {
+            var searchTerm = request.SearchQuery.ToLower().Trim();
+            query = query.Where(t =>
+                t.Title.ToLower().Contains(searchTerm) ||
+                (t.Description != null && t.Description.ToLower().Contains(searchTerm)) ||
+                t.TodoCategories.Any(tc => tc.Category.Name.ToLower().Contains(searchTerm)) ||
+                t.TodoTags.Any(tt => tt.Tag.Name.ToLower().Contains(searchTerm))
+            );
+        }
+
+        // Overdue filter (must be checked before IsCompleted filter)
+        if (request.IsOverdue == true)
+        {
+            var now = DateTime.UtcNow.Date;
+            query = query.Where(t => !t.IsCompleted && t.DueDate != null && t.DueDate.Value.Date < now);
+        }
+
+        // Status filter
+        if (request.IsCompleted.HasValue)
+        {
+            if (request.IsCompleted.Value)
+            {
+                // Completed
+                query = query.Where(t => t.IsCompleted);
+            }
+            else if (request.IsOverdue != true) // Only filter pending if not filtering for overdue
+            {
+                // Pending (not completed and not overdue)
+                var now = DateTime.UtcNow.Date;
+                query = query.Where(t => !t.IsCompleted && (t.DueDate == null || t.DueDate.Value.Date >= now));
+            }
+        }
+
+        // Priority filter
+        if (request.Priority.HasValue)
+        {
+            query = query.Where(t => t.Priority == request.Priority.Value);
+        }
+
+        // Category filter
+        if (request.CategoryIds != null && request.CategoryIds.Any())
+        {
+            query = query.Where(t => t.TodoCategories.Any(tc => request.CategoryIds.Contains(tc.CategoryId)));
+        }
+
+        // Tag filter
+        if (request.TagIds != null && request.TagIds.Any())
+        {
+            query = query.Where(t => t.TodoTags.Any(tt => request.TagIds.Contains(tt.TagId)));
+        }
+
+        // Due date range filter
+        if (request.DueDateFrom.HasValue)
+        {
+            query = query.Where(t => t.DueDate != null && t.DueDate >= request.DueDateFrom.Value);
+        }
+
+        if (request.DueDateTo.HasValue)
+        {
+            var dueDateTo = request.DueDateTo.Value.Date.AddDays(1).AddTicks(-1); // End of day
+            query = query.Where(t => t.DueDate != null && t.DueDate <= dueDateTo);
+        }
+
+        // Created date range filter
+        if (request.CreatedAtFrom.HasValue)
+        {
+            query = query.Where(t => t.CreatedAt >= request.CreatedAtFrom.Value);
+        }
+
+        if (request.CreatedAtTo.HasValue)
+        {
+            var createdAtTo = request.CreatedAtTo.Value.Date.AddDays(1).AddTicks(-1); // End of day
+            query = query.Where(t => t.CreatedAt <= createdAtTo);
+        }
+
+        // Get total count before pagination
+        var totalCount = await query.CountAsync();
+
+        // Sorting
+        var sortBy = request.SortBy?.ToLower() ?? "createdAt";
+        var sortOrder = request.SortOrder?.ToLower() ?? "desc";
+
+        query = sortBy switch
+        {
+            "title" => sortOrder == "asc" ? query.OrderBy(t => t.Title) : query.OrderByDescending(t => t.Title),
+            "priority" => sortOrder == "asc" ? query.OrderBy(t => t.Priority) : query.OrderByDescending(t => t.Priority),
+            "duedate" => sortOrder == "asc"
+                ? query.OrderBy(t => t.DueDate ?? DateTime.MaxValue)
+                : query.OrderByDescending(t => t.DueDate ?? DateTime.MinValue),
+            "createdat" or _ => sortOrder == "asc"
+                ? query.OrderBy(t => t.CreatedAt)
+                : query.OrderByDescending(t => t.CreatedAt)
+        };
+
+        // Pagination
+        var pageNumber = request.PageNumber ?? 1;
+        var pageSize = request.PageSize ?? 50;
+        var skip = (pageNumber - 1) * pageSize;
+
+        var todos = await query
+            .Skip(skip)
+            .Take(pageSize)
+            .ToListAsync();
+
+        return new SearchFilterResponse
+        {
+            Todos = todos.Select(t => MapToDto(t)).ToList(),
+            TotalCount = totalCount,
+            PageNumber = pageNumber,
+            PageSize = pageSize
+        };
+    }
+
     private TodoDto MapToDto(Todo todo)
     {
         return new TodoDto

@@ -8,6 +8,8 @@ import { Category, Tag } from '../types/category'
 import CategorySelector from '../components/CategorySelector'
 import TagInput from '../components/TagInput'
 import CategoryManagement from '../components/CategoryManagement'
+import SearchBar from '../components/SearchBar'
+import AdvancedFilters, { FilterOptions } from '../components/AdvancedFilters'
 import './Dashboard.css'
 
 const Dashboard = () => {
@@ -24,6 +26,17 @@ const Dashboard = () => {
   const [editingTodo, setEditingTodo] = useState<Todo | null>(null)
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<number | null>(null)
   const [selectedTagFilter, setSelectedTagFilter] = useState<number | null>(null)
+  const [searchQuery, setSearchQuery] = useState<string>('')
+  const [advancedFilters, setAdvancedFilters] = useState<FilterOptions>({
+    priority: null,
+    isCompleted: null,
+    dueDateFrom: undefined,
+    dueDateTo: undefined,
+    createdAtFrom: undefined,
+    createdAtTo: undefined,
+    sortBy: 'createdAt',
+    sortOrder: 'desc',
+  })
   const [formData, setFormData] = useState<CreateTodoRequest>({
     title: '',
     description: '',
@@ -40,7 +53,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     applyFilters()
-  }, [todos, selectedCategoryFilter, selectedTagFilter])
+  }, [todos, selectedCategoryFilter, selectedTagFilter, searchQuery, advancedFilters])
 
   const loadInitialData = async () => {
     try {
@@ -88,19 +101,128 @@ const Dashboard = () => {
   const applyFilters = () => {
     let filtered = [...todos]
 
+    // Text search
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim()
+      filtered = filtered.filter(
+        (todo) =>
+          todo.title.toLowerCase().includes(query) ||
+          todo.description?.toLowerCase().includes(query) ||
+          todo.categories?.some((cat) => cat.name.toLowerCase().includes(query)) ||
+          todo.tags?.some((tag) => tag.name.toLowerCase().includes(query))
+      )
+    }
+
+    // Category filter
     if (selectedCategoryFilter !== null) {
       filtered = filtered.filter(
         (todo) => todo.categories?.some((cat) => cat.id === selectedCategoryFilter)
       )
     }
 
+    // Tag filter
     if (selectedTagFilter !== null) {
       filtered = filtered.filter(
         (todo) => todo.tags?.some((tag) => tag.id === selectedTagFilter)
       )
     }
 
+    // Advanced filters
+    if (advancedFilters.priority !== null && advancedFilters.priority !== undefined) {
+      filtered = filtered.filter((todo) => todo.priority === advancedFilters.priority)
+    }
+
+    if (advancedFilters.isCompleted !== null && advancedFilters.isCompleted !== undefined) {
+      if (advancedFilters.isCompleted === 'overdue') {
+        const now = new Date()
+        now.setHours(0, 0, 0, 0)
+        filtered = filtered.filter(
+          (todo) => !todo.isCompleted && todo.dueDate && new Date(todo.dueDate) < now
+        )
+      } else {
+        filtered = filtered.filter((todo) => todo.isCompleted === advancedFilters.isCompleted)
+      }
+    }
+
+    if (advancedFilters.dueDateFrom) {
+      const fromDate = new Date(advancedFilters.dueDateFrom)
+      filtered = filtered.filter((todo) => {
+        if (!todo.dueDate) return false
+        return new Date(todo.dueDate) >= fromDate
+      })
+    }
+
+    if (advancedFilters.dueDateTo) {
+      const toDate = new Date(advancedFilters.dueDateTo)
+      toDate.setHours(23, 59, 59, 999) // Include the entire end date
+      filtered = filtered.filter((todo) => {
+        if (!todo.dueDate) return false
+        return new Date(todo.dueDate) <= toDate
+      })
+    }
+
+    if (advancedFilters.createdAtFrom) {
+      const fromDate = new Date(advancedFilters.createdAtFrom)
+      fromDate.setHours(0, 0, 0, 0)
+      filtered = filtered.filter((todo) => {
+        return new Date(todo.createdAt) >= fromDate
+      })
+    }
+
+    if (advancedFilters.createdAtTo) {
+      const toDate = new Date(advancedFilters.createdAtTo)
+      toDate.setHours(23, 59, 59, 999) // Include the entire end date
+      filtered = filtered.filter((todo) => {
+        return new Date(todo.createdAt) <= toDate
+      })
+    }
+
+    // Sorting
+    const sortBy = advancedFilters.sortBy || 'createdAt'
+    const sortOrder = advancedFilters.sortOrder || 'desc'
+
+    filtered.sort((a, b) => {
+      let comparison = 0
+
+      switch (sortBy) {
+        case 'title':
+          comparison = a.title.localeCompare(b.title)
+          break
+        case 'priority':
+          comparison = a.priority - b.priority
+          break
+        case 'dueDate':
+          if (!a.dueDate && !b.dueDate) comparison = 0
+          else if (!a.dueDate) comparison = 1
+          else if (!b.dueDate) comparison = -1
+          else comparison = new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
+          break
+        case 'createdAt':
+        default:
+          comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          break
+      }
+
+      return sortOrder === 'asc' ? comparison : -comparison
+    })
+
     setFilteredTodos(filtered)
+  }
+
+  const clearAllFilters = () => {
+    setSearchQuery('')
+    setSelectedCategoryFilter(null)
+    setSelectedTagFilter(null)
+    setAdvancedFilters({
+      priority: null,
+      isCompleted: null,
+      dueDateFrom: undefined,
+      dueDateTo: undefined,
+      createdAtFrom: undefined,
+      createdAtTo: undefined,
+      sortBy: 'createdAt',
+      sortOrder: 'desc',
+    })
   }
 
   const handleLogout = async () => {
@@ -237,6 +359,15 @@ const Dashboard = () => {
 
         {error && <div className="error-message">{error}</div>}
 
+        <div className="search-section">
+          <SearchBar searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+          <AdvancedFilters
+            filters={advancedFilters}
+            onFiltersChange={setAdvancedFilters}
+            onClear={clearAllFilters}
+          />
+        </div>
+
         <div className="category-section">
           <button
             onClick={() => setShowCategoryManagement(!showCategoryManagement)}
@@ -292,7 +423,7 @@ const Dashboard = () => {
               }}
               className="clear-filters-button"
             >
-              Clear Filters
+              Clear Category/Tag Filters
             </button>
           )}
         </div>

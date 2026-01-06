@@ -107,6 +107,60 @@ public class TodoController : ControllerBase
         return Ok(todos);
     }
 
+    [HttpPost("search")]
+    public async Task<ActionResult<SearchFilterResponse>> SearchAndFilterTodos([FromBody] SearchFilterRequest request)
+    {
+        var userId = GetUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var result = await _todoService.SearchAndFilterTodosAsync(userId.Value, request);
+        return Ok(result);
+    }
+
+    [HttpGet("search")]
+    public async Task<ActionResult<SearchFilterResponse>> SearchAndFilterTodosGet(
+        [FromQuery] string? searchQuery,
+        [FromQuery] bool? isCompleted,
+        [FromQuery] bool? isOverdue,
+        [FromQuery] int? priority,
+        [FromQuery] List<int>? categoryIds,
+        [FromQuery] List<int>? tagIds,
+        [FromQuery] DateTime? dueDateFrom,
+        [FromQuery] DateTime? dueDateTo,
+        [FromQuery] DateTime? createdAtFrom,
+        [FromQuery] DateTime? createdAtTo,
+        [FromQuery] string? sortBy,
+        [FromQuery] string? sortOrder,
+        [FromQuery] int? pageNumber,
+        [FromQuery] int? pageSize)
+    {
+        var userId = GetUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var request = new SearchFilterRequest
+        {
+            SearchQuery = searchQuery,
+            IsCompleted = isCompleted,
+            IsOverdue = isOverdue,
+            Priority = priority,
+            CategoryIds = categoryIds,
+            TagIds = tagIds,
+            DueDateFrom = dueDateFrom,
+            DueDateTo = dueDateTo,
+            CreatedAtFrom = createdAtFrom,
+            CreatedAtTo = createdAtTo,
+            SortBy = sortBy,
+            SortOrder = sortOrder,
+            PageNumber = pageNumber,
+            PageSize = pageSize
+        };
+
+        var result = await _todoService.SearchAndFilterTodosAsync(userId.Value, request);
+        return Ok(result);
+    }
+
     private int? GetUserId()
     {
         var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;

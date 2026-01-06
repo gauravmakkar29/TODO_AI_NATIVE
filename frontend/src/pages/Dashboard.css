@@ -77,6 +77,10 @@
   background: #5a6268;
 }
 
+.search-section {
+  margin-bottom: 20px;
+}
+
 .filter-section {
   display: flex;
   gap: 15px;
