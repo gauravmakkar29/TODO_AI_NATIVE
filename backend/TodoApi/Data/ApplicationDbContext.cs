@@ -13,6 +13,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<User> Users { get; set; }
     public DbSet<RefreshToken> RefreshTokens { get; set; }
     public DbSet<Todo> Todos { get; set; }
+    public DbSet<Category> Categories { get; set; }
+    public DbSet<Tag> Tags { get; set; }
+    public DbSet<TodoCategory> TodoCategories { get; set; }
+    public DbSet<TodoTag> TodoTags { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -46,6 +50,54 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Title).IsRequired().HasMaxLength(500);
             entity.Property(e => e.Description).HasMaxLength(2000);
             entity.Property(e => e.CreatedAt).IsRequired();
+        });
+
+        modelBuilder.Entity<Category>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.Name).IsUnique();
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Color).IsRequired().HasMaxLength(7); // Hex color code
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.CreatedAt).IsRequired();
+        });
+
+        modelBuilder.Entity<Tag>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.Name).IsUnique();
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Color).IsRequired().HasMaxLength(7); // Hex color code
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.CreatedAt).IsRequired();
+        });
+
+        // Configure many-to-many relationship: Todo <-> Category
+        modelBuilder.Entity<TodoCategory>(entity =>
+        {
+            entity.HasKey(e => new { e.TodoId, e.CategoryId });
+            entity.HasOne(e => e.Todo)
+                  .WithMany(t => t.TodoCategories)
+                  .HasForeignKey(e => e.TodoId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Category)
+                  .WithMany(c => c.TodoCategories)
+                  .HasForeignKey(e => e.CategoryId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Configure many-to-many relationship: Todo <-> Tag
+        modelBuilder.Entity<TodoTag>(entity =>
+        {
+            entity.HasKey(e => new { e.TodoId, e.TagId });
+            entity.HasOne(e => e.Todo)
+                  .WithMany(t => t.TodoTags)
+                  .HasForeignKey(e => e.TodoId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Tag)
+                  .WithMany(t => t.TodoTags)
+                  .HasForeignKey(e => e.TagId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

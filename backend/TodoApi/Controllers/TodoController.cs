@@ -85,6 +85,28 @@ public class TodoController : ControllerBase
         return NoContent();
     }
 
+    [HttpGet("category/{categoryId}")]
+    public async Task<ActionResult<IEnumerable<TodoDto>>> GetTodosByCategory(int categoryId)
+    {
+        var userId = GetUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var todos = await _todoService.GetTodosByCategoryAsync(userId.Value, categoryId);
+        return Ok(todos);
+    }
+
+    [HttpGet("tag/{tagId}")]
+    public async Task<ActionResult<IEnumerable<TodoDto>>> GetTodosByTag(int tagId)
+    {
+        var userId = GetUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var todos = await _todoService.GetTodosByTagAsync(userId.Value, tagId);
+        return Ok(todos);
+    }
+
     private int? GetUserId()
     {
         var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;

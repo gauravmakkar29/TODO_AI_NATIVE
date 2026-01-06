@@ -9,6 +9,8 @@ public interface ITodoService
     Task<TodoDto> CreateTodoAsync(CreateTodoRequest request, int userId);
     Task<TodoDto?> UpdateTodoAsync(int todoId, UpdateTodoRequest request, int userId);
     Task<bool> DeleteTodoAsync(int todoId, int userId);
+    Task<IEnumerable<TodoDto>> GetTodosByCategoryAsync(int userId, int categoryId);
+    Task<IEnumerable<TodoDto>> GetTodosByTagAsync(int userId, int tagId);
 }
 
 

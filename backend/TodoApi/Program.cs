@@ -83,8 +83,17 @@ builder.Services.AddCors(options =>
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<ITodoService, TodoService>();
+builder.Services.AddScoped<ICategoryService, CategoryService>();
+builder.Services.AddScoped<ITagService, TagService>();
 
 var app = builder.Build();
+
+// Seed database
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    await DatabaseSeeder.SeedCategoriesAsync(context);
+}
 
 // Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())

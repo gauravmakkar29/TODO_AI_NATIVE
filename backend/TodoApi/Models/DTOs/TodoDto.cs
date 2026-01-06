@@ -10,6 +10,8 @@ public class TodoDto
     public DateTime? UpdatedAt { get; set; }
     public DateTime? DueDate { get; set; }
     public int Priority { get; set; }
+    public List<CategoryDto> Categories { get; set; } = new List<CategoryDto>();
+    public List<TagDto> Tags { get; set; } = new List<TagDto>();
 }
 
 public class CreateTodoRequest
@@ -18,6 +20,8 @@ public class CreateTodoRequest
     public string? Description { get; set; }
     public DateTime? DueDate { get; set; }
     public int Priority { get; set; } = 0;
+    public List<int> CategoryIds { get; set; } = new List<int>();
+    public List<int> TagIds { get; set; } = new List<int>();
 }
 
 public class UpdateTodoRequest
@@ -27,6 +31,8 @@ public class UpdateTodoRequest
     public bool? IsCompleted { get; set; }
     public DateTime? DueDate { get; set; }
     public int? Priority { get; set; }
+    public List<int>? CategoryIds { get; set; }
+    public List<int>? TagIds { get; set; }
 }
 
 

@@ -347,6 +347,382 @@ public class TodoServiceTests : IDisposable
         Assert.NotNull(stillExists);
     }
 
+    [Fact]
+    public async Task CreateTodoAsync_AssignsCategoriesSuccessfully()
+    {
+        // Arrange
+        var userId = 1;
+        var category1 = new Category { Name = "Work", Color = "#3B82F6", CreatedAt = DateTime.UtcNow };
+        var category2 = new Category { Name = "Personal", Color = "#10B981", CreatedAt = DateTime.UtcNow };
+        _context.Categories.AddRange(category1, category2);
+        await _context.SaveChangesAsync();
+
+        var request = new CreateTodoRequest
+        {
+            Title = "New Todo",
+            CategoryIds = new List<int> { category1.Id, category2.Id }
+        };
+
+        // Act
+        var result = await _service.CreateTodoAsync(request, userId);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(2, result.Categories.Count);
+        Assert.Contains(result.Categories, c => c.Id == category1.Id);
+        Assert.Contains(result.Categories, c => c.Id == category2.Id);
+    }
+
+    [Fact]
+    public async Task CreateTodoAsync_AssignsTagsSuccessfully()
+    {
+        // Arrange
+        var userId = 1;
+        var tag1 = new Tag { Name = "Urgent", Color = "#EF4444", CreatedAt = DateTime.UtcNow };
+        var tag2 = new Tag { Name = "Important", Color = "#F59E0B", CreatedAt = DateTime.UtcNow };
+        _context.Tags.AddRange(tag1, tag2);
+        await _context.SaveChangesAsync();
+
+        var request = new CreateTodoRequest
+        {
+            Title = "New Todo",
+            TagIds = new List<int> { tag1.Id, tag2.Id }
+        };
+
+        // Act
+        var result = await _service.CreateTodoAsync(request, userId);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(2, result.Tags.Count);
+        Assert.Contains(result.Tags, t => t.Id == tag1.Id);
+        Assert.Contains(result.Tags, t => t.Id == tag2.Id);
+    }
+
+    [Fact]
+    public async Task CreateTodoAsync_IgnoresInvalidCategoryIds()
+    {
+        // Arrange
+        var userId = 1;
+        var validCategory = new Category { Name = "Work", Color = "#3B82F6", CreatedAt = DateTime.UtcNow };
+        _context.Categories.Add(validCategory);
+        await _context.SaveChangesAsync();
+
+        var request = new CreateTodoRequest
+        {
+            Title = "New Todo",
+            CategoryIds = new List<int> { validCategory.Id, 999 } // 999 doesn't exist
+        };
+
+        // Act
+        var result = await _service.CreateTodoAsync(request, userId);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Single(result.Categories);
+        Assert.Equal(validCategory.Id, result.Categories.First().Id);
+    }
+
+    [Fact]
+    public async Task CreateTodoAsync_IgnoresInvalidTagIds()
+    {
+        // Arrange
+        var userId = 1;
+        var validTag = new Tag { Name = "Urgent", Color = "#EF4444", CreatedAt = DateTime.UtcNow };
+        _context.Tags.Add(validTag);
+        await _context.SaveChangesAsync();
+
+        var request = new CreateTodoRequest
+        {
+            Title = "New Todo",
+            TagIds = new List<int> { validTag.Id, 999 } // 999 doesn't exist
+        };
+
+        // Act
+        var result = await _service.CreateTodoAsync(request, userId);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Single(result.Tags);
+        Assert.Equal(validTag.Id, result.Tags.First().Id);
+    }
+
+    [Fact]
+    public async Task GetTodosByUserIdAsync_IncludesCategoriesAndTags()
+    {
+        // Arrange
+        var userId = 1;
+        var category = new Category { Name = "Work", Color = "#3B82F6", CreatedAt = DateTime.UtcNow };
+        var tag = new Tag { Name = "Urgent", Color = "#EF4444", CreatedAt = DateTime.UtcNow };
+        _context.Categories.Add(category);
+        _context.Tags.Add(tag);
+        await _context.SaveChangesAsync();
+
+        var todo = new Todo { UserId = userId, Title = "Test Todo", CreatedAt = DateTime.UtcNow };
+        _context.Todos.Add(todo);
+        await _context.SaveChangesAsync();
+
+        todo.TodoCategories.Add(new TodoCategory { TodoId = todo.Id, CategoryId = category.Id });
+        todo.TodoTags.Add(new TodoTag { TodoId = todo.Id, TagId = tag.Id });
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = (await _service.GetTodosByUserIdAsync(userId)).ToList();
+
+        // Assert
+        Assert.Single(result);
+        Assert.Single(result[0].Categories);
+        Assert.Single(result[0].Tags);
+        Assert.Equal(category.Id, result[0].Categories.First().Id);
+        Assert.Equal(tag.Id, result[0].Tags.First().Id);
+    }
+
+    [Fact]
+    public async Task GetTodoByIdAsync_IncludesCategoriesAndTags()
+    {
+        // Arrange
+        var userId = 1;
+        var category = new Category { Name = "Work", Color = "#3B82F6", CreatedAt = DateTime.UtcNow };
+        var tag = new Tag { Name = "Urgent", Color = "#EF4444", CreatedAt = DateTime.UtcNow };
+        _context.Categories.Add(category);
+        _context.Tags.Add(tag);
+        await _context.SaveChangesAsync();
+
+        var todo = new Todo { UserId = userId, Title = "Test Todo", CreatedAt = DateTime.UtcNow };
+        _context.Todos.Add(todo);
+        await _context.SaveChangesAsync();
+
+        todo.TodoCategories.Add(new TodoCategory { TodoId = todo.Id, CategoryId = category.Id });
+        todo.TodoTags.Add(new TodoTag { TodoId = todo.Id, TagId = tag.Id });
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _service.GetTodoByIdAsync(todo.Id, userId);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Single(result.Categories);
+        Assert.Single(result.Tags);
+        Assert.Equal(category.Id, result.Categories.First().Id);
+        Assert.Equal(tag.Id, result.Tags.First().Id);
+    }
+
+    [Fact]
+    public async Task UpdateTodoAsync_UpdatesCategoriesSuccessfully()
+    {
+        // Arrange
+        var userId = 1;
+        var category1 = new Category { Name = "Work", Color = "#3B82F6", CreatedAt = DateTime.UtcNow };
+        var category2 = new Category { Name = "Personal", Color = "#10B981", CreatedAt = DateTime.UtcNow };
+        var category3 = new Category { Name = "Shopping", Color = "#F59E0B", CreatedAt = DateTime.UtcNow };
+        _context.Categories.AddRange(category1, category2, category3);
+        await _context.SaveChangesAsync();
+
+        var todo = new Todo { UserId = userId, Title = "Test Todo", CreatedAt = DateTime.UtcNow };
+        _context.Todos.Add(todo);
+        await _context.SaveChangesAsync();
+
+        todo.TodoCategories.Add(new TodoCategory { TodoId = todo.Id, CategoryId = category1.Id });
+        await _context.SaveChangesAsync();
+
+        var request = new UpdateTodoRequest
+        {
+            CategoryIds = new List<int> { category2.Id, category3.Id }
+        };
+
+        // Act
+        var result = await _service.UpdateTodoAsync(todo.Id, request, userId);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(2, result.Categories.Count);
+        Assert.Contains(result.Categories, c => c.Id == category2.Id);
+        Assert.Contains(result.Categories, c => c.Id == category3.Id);
+        Assert.DoesNotContain(result.Categories, c => c.Id == category1.Id);
+    }
+
+    [Fact]
+    public async Task UpdateTodoAsync_UpdatesTagsSuccessfully()
+    {
+        // Arrange
+        var userId = 1;
+        var tag1 = new Tag { Name = "Urgent", Color = "#EF4444", CreatedAt = DateTime.UtcNow };
+        var tag2 = new Tag { Name = "Important", Color = "#F59E0B", CreatedAt = DateTime.UtcNow };
+        var tag3 = new Tag { Name = "Review", Color = "#3B82F6", CreatedAt = DateTime.UtcNow };
+        _context.Tags.AddRange(tag1, tag2, tag3);
+        await _context.SaveChangesAsync();
+
+        var todo = new Todo { UserId = userId, Title = "Test Todo", CreatedAt = DateTime.UtcNow };
+        _context.Todos.Add(todo);
+        await _context.SaveChangesAsync();
+
+        todo.TodoTags.Add(new TodoTag { TodoId = todo.Id, TagId = tag1.Id });
+        await _context.SaveChangesAsync();
+
+        var request = new UpdateTodoRequest
+        {
+            TagIds = new List<int> { tag2.Id, tag3.Id }
+        };
+
+        // Act
+        var result = await _service.UpdateTodoAsync(todo.Id, request, userId);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(2, result.Tags.Count);
+        Assert.Contains(result.Tags, t => t.Id == tag2.Id);
+        Assert.Contains(result.Tags, t => t.Id == tag3.Id);
+        Assert.DoesNotContain(result.Tags, t => t.Id == tag1.Id);
+    }
+
+    [Fact]
+    public async Task UpdateTodoAsync_RemovesAllCategories_WhenEmptyListProvided()
+    {
+        // Arrange
+        var userId = 1;
+        var category = new Category { Name = "Work", Color = "#3B82F6", CreatedAt = DateTime.UtcNow };
+        _context.Categories.Add(category);
+        await _context.SaveChangesAsync();
+
+        var todo = new Todo { UserId = userId, Title = "Test Todo", CreatedAt = DateTime.UtcNow };
+        _context.Todos.Add(todo);
+        await _context.SaveChangesAsync();
+
+        todo.TodoCategories.Add(new TodoCategory { TodoId = todo.Id, CategoryId = category.Id });
+        await _context.SaveChangesAsync();
+
+        var request = new UpdateTodoRequest
+        {
+            CategoryIds = new List<int>()
+        };
+
+        // Act
+        var result = await _service.UpdateTodoAsync(todo.Id, request, userId);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Empty(result.Categories);
+    }
+
+    [Fact]
+    public async Task UpdateTodoAsync_RemovesAllTags_WhenEmptyListProvided()
+    {
+        // Arrange
+        var userId = 1;
+        var tag = new Tag { Name = "Urgent", Color = "#EF4444", CreatedAt = DateTime.UtcNow };
+        _context.Tags.Add(tag);
+        await _context.SaveChangesAsync();
+
+        var todo = new Todo { UserId = userId, Title = "Test Todo", CreatedAt = DateTime.UtcNow };
+        _context.Todos.Add(todo);
+        await _context.SaveChangesAsync();
+
+        todo.TodoTags.Add(new TodoTag { TodoId = todo.Id, TagId = tag.Id });
+        await _context.SaveChangesAsync();
+
+        var request = new UpdateTodoRequest
+        {
+            TagIds = new List<int>()
+        };
+
+        // Act
+        var result = await _service.UpdateTodoAsync(todo.Id, request, userId);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Empty(result.Tags);
+    }
+
+    [Fact]
+    public async Task GetTodosByCategoryAsync_ReturnsOnlyTodosWithCategory()
+    {
+        // Arrange
+        var userId = 1;
+        var category1 = new Category { Name = "Work", Color = "#3B82F6", CreatedAt = DateTime.UtcNow };
+        var category2 = new Category { Name = "Personal", Color = "#10B981", CreatedAt = DateTime.UtcNow };
+        _context.Categories.AddRange(category1, category2);
+        await _context.SaveChangesAsync();
+
+        var todo1 = new Todo { UserId = userId, Title = "Work Todo", CreatedAt = DateTime.UtcNow };
+        var todo2 = new Todo { UserId = userId, Title = "Personal Todo", CreatedAt = DateTime.UtcNow };
+        var todo3 = new Todo { UserId = userId, Title = "Other Todo", CreatedAt = DateTime.UtcNow };
+        _context.Todos.AddRange(todo1, todo2, todo3);
+        await _context.SaveChangesAsync();
+
+        todo1.TodoCategories.Add(new TodoCategory { TodoId = todo1.Id, CategoryId = category1.Id });
+        todo2.TodoCategories.Add(new TodoCategory { TodoId = todo2.Id, CategoryId = category2.Id });
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = (await _service.GetTodosByCategoryAsync(userId, category1.Id)).ToList();
+
+        // Assert
+        Assert.Single(result);
+        Assert.Equal("Work Todo", result[0].Title);
+        Assert.Contains(result[0].Categories, c => c.Id == category1.Id);
+    }
+
+    [Fact]
+    public async Task GetTodosByTagAsync_ReturnsOnlyTodosWithTag()
+    {
+        // Arrange
+        var userId = 1;
+        var tag1 = new Tag { Name = "Urgent", Color = "#EF4444", CreatedAt = DateTime.UtcNow };
+        var tag2 = new Tag { Name = "Important", Color = "#F59E0B", CreatedAt = DateTime.UtcNow };
+        _context.Tags.AddRange(tag1, tag2);
+        await _context.SaveChangesAsync();
+
+        var todo1 = new Todo { UserId = userId, Title = "Urgent Todo", CreatedAt = DateTime.UtcNow };
+        var todo2 = new Todo { UserId = userId, Title = "Important Todo", CreatedAt = DateTime.UtcNow };
+        var todo3 = new Todo { UserId = userId, Title = "Other Todo", CreatedAt = DateTime.UtcNow };
+        _context.Todos.AddRange(todo1, todo2, todo3);
+        await _context.SaveChangesAsync();
+
+        todo1.TodoTags.Add(new TodoTag { TodoId = todo1.Id, TagId = tag1.Id });
+        todo2.TodoTags.Add(new TodoTag { TodoId = todo2.Id, TagId = tag2.Id });
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = (await _service.GetTodosByTagAsync(userId, tag1.Id)).ToList();
+
+        // Assert
+        Assert.Single(result);
+        Assert.Equal("Urgent Todo", result[0].Title);
+        Assert.Contains(result[0].Tags, t => t.Id == tag1.Id);
+    }
+
+    [Fact]
+    public async Task GetTodosByCategoryAsync_ReturnsEmptyList_WhenNoTodosHaveCategory()
+    {
+        // Arrange
+        var userId = 1;
+        var category = new Category { Name = "Work", Color = "#3B82F6", CreatedAt = DateTime.UtcNow };
+        _context.Categories.Add(category);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _service.GetTodosByCategoryAsync(userId, category.Id);
+
+        // Assert
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public async Task GetTodosByTagAsync_ReturnsEmptyList_WhenNoTodosHaveTag()
+    {
+        // Arrange
+        var userId = 1;
+        var tag = new Tag { Name = "Urgent", Color = "#EF4444", CreatedAt = DateTime.UtcNow };
+        _context.Tags.Add(tag);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _service.GetTodosByTagAsync(userId, tag.Id);
+
+        // Assert
+        Assert.Empty(result);
+    }
+
     public void Dispose()
     {
         _context.Dispose();

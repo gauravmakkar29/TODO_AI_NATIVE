@@ -12,8 +12,10 @@ public class Todo
     public DateTime? DueDate { get; set; }
     public int Priority { get; set; } = 0; // 0 = Low, 1 = Medium, 2 = High
 
-    // Navigation property
+    // Navigation properties
     public User? User { get; set; }
+    public ICollection<TodoCategory> TodoCategories { get; set; } = new List<TodoCategory>();
+    public ICollection<TodoTag> TodoTags { get; set; } = new List<TodoTag>();
 }
 
 
