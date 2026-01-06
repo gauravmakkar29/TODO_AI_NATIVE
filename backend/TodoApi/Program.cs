@@ -86,6 +86,10 @@ builder.Services.AddScoped<ITodoService, TodoService>();
 builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<ITagService, TagService>();
 builder.Services.AddScoped<IFilterPresetService, FilterPresetService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
+
+// Background Services
+builder.Services.AddHostedService<ReminderBackgroundService>();
 
 var app = builder.Build();
 

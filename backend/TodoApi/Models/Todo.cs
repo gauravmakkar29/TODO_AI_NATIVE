@@ -10,6 +10,7 @@ public class Todo
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
     public DateTime? DueDate { get; set; }
+    public DateTime? ReminderDate { get; set; }
     public int Priority { get; set; } = 0; // 0 = Low, 1 = Medium, 2 = High
 
     // Navigation properties

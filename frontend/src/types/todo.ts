@@ -8,7 +8,10 @@ export interface Todo {
   createdAt: string
   updatedAt?: string
   dueDate?: string
+  reminderDate?: string
   priority: number // 0 = Low, 1 = Medium, 2 = High
+  isOverdue?: boolean
+  isApproachingDue?: boolean
   categories?: Category[]
   tags?: Tag[]
 }
@@ -17,6 +20,7 @@ export interface CreateTodoRequest {
   title: string
   description?: string
   dueDate?: string
+  reminderDate?: string
   priority?: number
   categoryIds?: number[]
   tagIds?: number[]
@@ -27,6 +31,7 @@ export interface UpdateTodoRequest {
   description?: string
   isCompleted?: boolean
   dueDate?: string
+  reminderDate?: string
   priority?: number
   categoryIds?: number[]
   tagIds?: number[]

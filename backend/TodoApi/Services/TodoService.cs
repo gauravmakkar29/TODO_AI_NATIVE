@@ -14,17 +14,32 @@ public class TodoService : ITodoService
         _context = context;
     }
 
-    public async Task<IEnumerable<TodoDto>> GetTodosByUserIdAsync(int userId)
+    public async Task<IEnumerable<TodoDto>> GetTodosByUserIdAsync(int userId, string? sortBy = null, int? priorityFilter = null)
     {
-        var todos = await _context.Todos
+        var query = _context.Todos
             .Where(t => t.UserId == userId)
             .Include(t => t.TodoCategories)
                 .ThenInclude(tc => tc.Category)
             .Include(t => t.TodoTags)
-                .ThenInclude(tt => tt.Tag)
-            .OrderByDescending(t => t.CreatedAt)
-            .ToListAsync();
+                .ThenInclude(tt => tt.Tag);
 
+        // Apply priority filter if provided
+        if (priorityFilter.HasValue)
+        {
+            query = query.Where(t => t.Priority == priorityFilter.Value);
+        }
+
+        // Apply sorting
+        query = sortBy?.ToLower() switch
+        {
+            "priority" => query.OrderByDescending(t => t.Priority).ThenByDescending(t => t.CreatedAt),
+            "priority_asc" => query.OrderBy(t => t.Priority).ThenByDescending(t => t.CreatedAt),
+            "duedate" => query.OrderBy(t => t.DueDate.HasValue).ThenBy(t => t.DueDate).ThenByDescending(t => t.CreatedAt),
+            "duedate_desc" => query.OrderByDescending(t => t.DueDate.HasValue).ThenByDescending(t => t.DueDate).ThenByDescending(t => t.CreatedAt),
+            _ => query.OrderByDescending(t => t.CreatedAt)
+        };
+
+        var todos = await query.ToListAsync();
         return todos.Select(t => MapToDto(t));
     }
 
@@ -51,6 +66,7 @@ public class TodoService : ITodoService
             Title = request.Title,
             Description = request.Description,
             DueDate = request.DueDate,
+            ReminderDate = request.ReminderDate,
             Priority = request.Priority,
             CreatedAt = DateTime.UtcNow
         };
@@ -133,6 +149,9 @@ public class TodoService : ITodoService
 
         if (request.DueDate.HasValue)
             todo.DueDate = request.DueDate;
+
+        if (request.ReminderDate.HasValue)
+            todo.ReminderDate = request.ReminderDate;
 
         if (request.Priority.HasValue)
             todo.Priority = request.Priority.Value;
@@ -376,6 +395,11 @@ public class TodoService : ITodoService
 
     private TodoDto MapToDto(Todo todo)
     {
+        var now = DateTime.UtcNow;
+        var isOverdue = todo.DueDate.HasValue && !todo.IsCompleted && todo.DueDate.Value < now;
+        var isApproachingDue = todo.DueDate.HasValue && !todo.IsCompleted && !isOverdue && 
+                               todo.DueDate.Value <= now.AddDays(3) && todo.DueDate.Value >= now;
+
         return new TodoDto
         {
             Id = todo.Id,
@@ -385,7 +409,10 @@ public class TodoService : ITodoService
             CreatedAt = todo.CreatedAt,
             UpdatedAt = todo.UpdatedAt,
             DueDate = todo.DueDate,
+            ReminderDate = todo.ReminderDate,
             Priority = todo.Priority,
+            IsOverdue = isOverdue,
+            IsApproachingDue = isApproachingDue,
             Categories = todo.TodoCategories
                 .Select(tc => new CategoryDto
                 {

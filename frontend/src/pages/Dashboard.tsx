@@ -10,6 +10,7 @@ import TagInput from '../components/TagInput'
 import CategoryManagement from '../components/CategoryManagement'
 import SearchBar from '../components/SearchBar'
 import AdvancedFilters, { FilterOptions } from '../components/AdvancedFilters'
+import CalendarView from '../components/CalendarView'
 import './Dashboard.css'
 
 const Dashboard = () => {
@@ -37,10 +38,14 @@ const Dashboard = () => {
     sortBy: 'createdAt',
     sortOrder: 'desc',
   })
+ 
+  const [priorityFilter, setPriorityFilter] = useState<number | null>(null)
+  const [showCalendarView, setShowCalendarView] = useState(false)
   const [formData, setFormData] = useState<CreateTodoRequest>({
     title: '',
     description: '',
     dueDate: '',
+    reminderDate: '',
     priority: 0,
     categoryIds: [],
     tagIds: [],
@@ -54,6 +59,10 @@ const Dashboard = () => {
   useEffect(() => {
     applyFilters()
   }, [todos, selectedCategoryFilter, selectedTagFilter, searchQuery, advancedFilters])
+
+  useEffect(() => {
+    loadTodos()
+  }, [sortBy, priorityFilter])
 
   const loadInitialData = async () => {
     try {
@@ -70,7 +79,7 @@ const Dashboard = () => {
 
   const loadTodos = async () => {
     try {
-      const data = await todoService.getTodos()
+      const data = await todoService.getTodos(sortBy || undefined, priorityFilter || undefined)
       setTodos(data)
     } catch (err: any) {
       console.error('Error loading todos:', err)
@@ -259,6 +268,7 @@ const Dashboard = () => {
       title: todo.title,
       description: todo.description || '',
       dueDate: todo.dueDate ? todo.dueDate.split('T')[0] : '',
+      reminderDate: todo.reminderDate ? todo.reminderDate.split('T')[0] : '',
       priority: todo.priority,
       categoryIds: todo.categories?.map((c) => c.id) || [],
       tagIds: [],
@@ -297,6 +307,7 @@ const Dashboard = () => {
       title: '',
       description: '',
       dueDate: '',
+      reminderDate: '',
       priority: 0,
       categoryIds: [],
       tagIds: [],
@@ -415,11 +426,41 @@ const Dashboard = () => {
               ))}
             </select>
           </div>
-          {(selectedCategoryFilter !== null || selectedTagFilter !== null) && (
+          <div className="filter-group">
+            <label>Filter by Priority:</label>
+            <select
+              value={priorityFilter !== null ? priorityFilter.toString() : ''}
+              onChange={(e) =>
+                setPriorityFilter(e.target.value ? parseInt(e.target.value) : null)
+              }
+              className="filter-select"
+            >
+              <option value="">All Priorities</option>
+              <option value="2">High</option>
+              <option value="1">Medium</option>
+              <option value="0">Low</option>
+            </select>
+          </div>
+          <div className="filter-group">
+            <label>Sort By:</label>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="filter-select"
+            >
+              <option value="">Created Date (Newest)</option>
+              <option value="priority">Priority (High to Low)</option>
+              <option value="priority_asc">Priority (Low to High)</option>
+              <option value="duedate">Due Date (Earliest)</option>
+              <option value="duedate_desc">Due Date (Latest)</option>
+            </select>
+          </div>
+          {(selectedCategoryFilter !== null || selectedTagFilter !== null || priorityFilter !== null) && (
             <button
               onClick={() => {
                 setSelectedCategoryFilter(null)
                 setSelectedTagFilter(null)
+                setPriorityFilter(null)
               }}
               className="clear-filters-button"
             >
@@ -431,15 +472,23 @@ const Dashboard = () => {
         <div className="todos-section">
           <div className="todos-header">
             <h2>Your Todos ({filteredTodos.length})</h2>
-            <button
-              onClick={() => {
-                cancelForm()
-                setShowAddForm(!showAddForm)
-              }}
-              className="add-todo-button"
-            >
-              {showAddForm ? 'Cancel' : '+ Add Todo'}
-            </button>
+            <div className="todos-header-actions">
+              <button
+                onClick={() => setShowCalendarView(!showCalendarView)}
+                className="calendar-view-button"
+              >
+                {showCalendarView ? 'List View' : 'Calendar View'}
+              </button>
+              <button
+                onClick={() => {
+                  cancelForm()
+                  setShowAddForm(!showAddForm)
+                }}
+                className="add-todo-button"
+              >
+                {showAddForm ? 'Cancel' : '+ Add Todo'}
+              </button>
+            </div>
           </div>
 
           {showAddForm && (
@@ -489,6 +538,17 @@ const Dashboard = () => {
                   />
                 </div>
                 <div className="form-group">
+                  <label htmlFor="reminderDate">Reminder Date</label>
+                  <input
+                    type="date"
+                    id="reminderDate"
+                    value={formData.reminderDate}
+                    onChange={(e) => setFormData({ ...formData, reminderDate: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
                   <label htmlFor="priority">Priority</label>
                   <select
                     id="priority"
@@ -514,6 +574,11 @@ const Dashboard = () => {
 
           {loading ? (
             <div className="loading">Loading todos...</div>
+          ) : showCalendarView ? (
+            <CalendarView 
+              todos={filteredTodos.filter(t => t.dueDate)} 
+              onTodoClick={handleEdit}
+            />
           ) : filteredTodos.length === 0 ? (
             <div className="no-todos">
               {todos.length === 0
@@ -523,7 +588,10 @@ const Dashboard = () => {
           ) : (
             <div className="todos-list">
               {filteredTodos.map((todo) => (
-                <div key={todo.id} className={`todo-item ${todo.isCompleted ? 'completed' : ''}`}>
+                <div 
+                  key={todo.id} 
+                  className={`todo-item ${todo.isCompleted ? 'completed' : ''} ${todo.isOverdue ? 'overdue' : ''} ${todo.isApproachingDue ? 'approaching-due' : ''}`}
+                >
                   <div className="todo-content">
                     <div className="todo-header">
                       <input
@@ -533,6 +601,12 @@ const Dashboard = () => {
                         className="todo-checkbox"
                       />
                       <h3 className="todo-title">{todo.title}</h3>
+                      {todo.isOverdue && (
+                        <span className="overdue-badge">Overdue</span>
+                      )}
+                      {todo.isApproachingDue && !todo.isOverdue && (
+                        <span className="approaching-badge">Due Soon</span>
+                      )}
                       <span className={`priority-badge ${getPriorityClass(todo.priority)}`}>
                         {getPriorityLabel(todo.priority)}
                       </span>
@@ -565,8 +639,13 @@ const Dashboard = () => {
                     )}
                     <div className="todo-meta">
                       {todo.dueDate && (
-                        <span className="todo-due-date">
+                        <span className={`todo-due-date ${todo.isOverdue ? 'overdue-text' : ''} ${todo.isApproachingDue ? 'approaching-text' : ''}`}>
                           Due: {new Date(todo.dueDate).toLocaleDateString()}
+                        </span>
+                      )}
+                      {todo.reminderDate && (
+                        <span className="todo-reminder-date">
+                          Reminder: {new Date(todo.reminderDate).toLocaleDateString()}
                         </span>
                       )}
                       <span className="todo-date">

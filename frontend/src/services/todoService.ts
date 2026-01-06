@@ -2,8 +2,14 @@ import { api } from './authService'
 import { Todo, CreateTodoRequest, UpdateTodoRequest } from '../types/todo'
 
 export const todoService = {
-  async getTodos(): Promise<Todo[]> {
-    const response = await api.get<Todo[]>('/todo')
+  async getTodos(sortBy?: string, priorityFilter?: number): Promise<Todo[]> {
+    const params = new URLSearchParams()
+    if (sortBy) params.append('sortBy', sortBy)
+    if (priorityFilter !== undefined) params.append('priorityFilter', priorityFilter.toString())
+    
+    const queryString = params.toString()
+    const url = queryString ? `/todo?${queryString}` : '/todo'
+    const response = await api.get<Todo[]>(url)
     return response.data
   },
 

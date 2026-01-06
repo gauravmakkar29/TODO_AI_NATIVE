@@ -1,0 +1,139 @@
+.calendar-view {
+  margin-top: 20px;
+}
+
+.calendar-month {
+  text-align: center;
+  margin-bottom: 20px;
+  font-size: 1.5rem;
+  color: #333;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+  background-color: #e0e0e0;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.calendar-day-header {
+  background-color: #f5f5f5;
+  padding: 10px;
+  text-align: center;
+  font-weight: bold;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.calendar-day {
+  background-color: white;
+  min-height: 100px;
+  padding: 8px;
+  position: relative;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.calendar-day:hover:not(.empty) {
+  background-color: #f9f9f9;
+}
+
+.calendar-day.empty {
+  background-color: #fafafa;
+  cursor: default;
+}
+
+.calendar-day.today {
+  background-color: #e3f2fd;
+  border: 2px solid #2196f3;
+}
+
+.calendar-day.has-todos {
+  background-color: #f1f8e9;
+}
+
+.calendar-day.has-overdue {
+  background-color: #ffebee;
+  border-left: 4px solid #f44336;
+}
+
+.calendar-day.has-approaching {
+  background-color: #fff3e0;
+  border-left: 4px solid #ff9800;
+}
+
+.calendar-day-number {
+  font-weight: bold;
+  margin-bottom: 4px;
+  color: #333;
+}
+
+.calendar-todos {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.calendar-todo-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  background-color: rgba(255, 255, 255, 0.7);
+}
+
+.calendar-todo-item:hover {
+  background-color: rgba(255, 255, 255, 0.9);
+}
+
+.calendar-todo-item.overdue {
+  background-color: rgba(244, 67, 54, 0.2);
+  color: #c62828;
+}
+
+.calendar-todo-item.approaching {
+  background-color: rgba(255, 152, 0, 0.2);
+  color: #e65100;
+}
+
+.priority-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.priority-dot.priority-2 {
+  background-color: #f44336;
+}
+
+.priority-dot.priority-1 {
+  background-color: #ff9800;
+}
+
+.priority-dot.priority-0 {
+  background-color: #4caf50;
+}
+
+.calendar-todo-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.calendar-todo-more {
+  font-size: 0.7rem;
+  color: #666;
+  font-style: italic;
+  padding: 2px 4px;
+}
+

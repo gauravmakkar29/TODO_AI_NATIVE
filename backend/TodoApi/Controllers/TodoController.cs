@@ -19,13 +19,13 @@ public class TodoController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<TodoDto>>> GetTodos()
+    public async Task<ActionResult<IEnumerable<TodoDto>>> GetTodos([FromQuery] string? sortBy = null, [FromQuery] int? priorityFilter = null)
     {
         var userId = GetUserId();
         if (userId == null)
             return Unauthorized();
 
-        var todos = await _todoService.GetTodosByUserIdAsync(userId.Value);
+        var todos = await _todoService.GetTodosByUserIdAsync(userId.Value, sortBy, priorityFilter);
         return Ok(todos);
     }
 

@@ -149,6 +149,28 @@
   margin-bottom: 20px;
 }
 
+.todos-header-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.calendar-view-button {
+  background: #4caf50;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.calendar-view-button:hover {
+  background: #45a049;
+}
+
 .todos-header h2 {
   color: #333;
   font-size: 1.5rem;
@@ -283,6 +305,16 @@
   background: #f8f9fa;
 }
 
+.todo-item.overdue {
+  border-left: 4px solid #f44336;
+  background: #ffebee;
+}
+
+.todo-item.approaching-due {
+  border-left: 4px solid #ff9800;
+  background: #fff3e0;
+}
+
 .todo-item.completed .todo-title {
   text-decoration: line-through;
   color: #999;
@@ -334,6 +366,26 @@
   color: #2e7d32;
 }
 
+.overdue-badge {
+  background: #f44336;
+  color: white;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.approaching-badge {
+  background: #ff9800;
+  color: white;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
 .todo-description {
   color: #666;
   margin: 10px 0;
@@ -369,6 +421,22 @@
   gap: 15px;
   font-size: 0.85rem;
   color: #999;
+  flex-wrap: wrap;
+}
+
+.todo-due-date.overdue-text {
+  color: #f44336;
+  font-weight: 600;
+}
+
+.todo-due-date.approaching-text {
+  color: #ff9800;
+  font-weight: 600;
+}
+
+.todo-reminder-date {
+  color: #2196f3;
+}
   margin-top: 10px;
 }
 
