@@ -1,3 +1,5 @@
+import { Category, Tag } from './category'
+
 export interface Todo {
   id: number
   title: string
@@ -7,6 +9,8 @@ export interface Todo {
   updatedAt?: string
   dueDate?: string
   priority: number // 0 = Low, 1 = Medium, 2 = High
+  categories?: Category[]
+  tags?: Tag[]
 }
 
 export interface CreateTodoRequest {
@@ -14,6 +18,8 @@ export interface CreateTodoRequest {
   description?: string
   dueDate?: string
   priority?: number
+  categoryIds?: number[]
+  tagIds?: number[]
 }
 
 export interface UpdateTodoRequest {
@@ -22,6 +28,8 @@ export interface UpdateTodoRequest {
   isCompleted?: boolean
   dueDate?: string
   priority?: number
+  categoryIds?: number[]
+  tagIds?: number[]
 }
 
 

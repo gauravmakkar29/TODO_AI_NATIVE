@@ -2,40 +2,105 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { todoService } from '../services/todoService'
+import { categoryService, tagService } from '../services/categoryService'
 import { Todo, CreateTodoRequest, UpdateTodoRequest } from '../types/todo'
+import { Category, Tag } from '../types/category'
+import CategorySelector from '../components/CategorySelector'
+import TagInput from '../components/TagInput'
+import CategoryManagement from '../components/CategoryManagement'
 import './Dashboard.css'
 
 const Dashboard = () => {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [todos, setTodos] = useState<Todo[]>([])
+  const [filteredTodos, setFilteredTodos] = useState<Todo[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
+  const [tags, setTags] = useState<Tag[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showAddForm, setShowAddForm] = useState(false)
+  const [showCategoryManagement, setShowCategoryManagement] = useState(false)
   const [editingTodo, setEditingTodo] = useState<Todo | null>(null)
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<number | null>(null)
+  const [selectedTagFilter, setSelectedTagFilter] = useState<number | null>(null)
   const [formData, setFormData] = useState<CreateTodoRequest>({
     title: '',
     description: '',
     dueDate: '',
     priority: 0,
+    categoryIds: [],
+    tagIds: [],
   })
+  const [selectedTags, setSelectedTags] = useState<Tag[]>([])
 
   useEffect(() => {
-    loadTodos()
+    loadInitialData()
   }, [])
 
-  const loadTodos = async () => {
+  useEffect(() => {
+    applyFilters()
+  }, [todos, selectedCategoryFilter, selectedTagFilter])
+
+  const loadInitialData = async () => {
     try {
       setLoading(true)
       setError(null)
-      const data = await todoService.getTodos()
-      setTodos(data)
+      await Promise.all([loadTodos(), loadCategories(), loadTags()])
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to load todos')
-      console.error('Error loading todos:', err)
+      setError(err.response?.data?.message || 'Failed to load data')
+      console.error('Error loading data:', err)
     } finally {
       setLoading(false)
     }
+  }
+
+  const loadTodos = async () => {
+    try {
+      const data = await todoService.getTodos()
+      setTodos(data)
+    } catch (err: any) {
+      console.error('Error loading todos:', err)
+      throw err
+    }
+  }
+
+  const loadCategories = async () => {
+    try {
+      const data = await categoryService.getCategories()
+      setCategories(data)
+    } catch (err: any) {
+      console.error('Error loading categories:', err)
+      // Don't throw - categories might not be implemented yet
+    }
+  }
+
+  const loadTags = async () => {
+    try {
+      const data = await tagService.getTags()
+      setTags(data)
+    } catch (err: any) {
+      console.error('Error loading tags:', err)
+      // Don't throw - tags might not be implemented yet
+    }
+  }
+
+  const applyFilters = () => {
+    let filtered = [...todos]
+
+    if (selectedCategoryFilter !== null) {
+      filtered = filtered.filter(
+        (todo) => todo.categories?.some((cat) => cat.id === selectedCategoryFilter)
+      )
+    }
+
+    if (selectedTagFilter !== null) {
+      filtered = filtered.filter(
+        (todo) => todo.tags?.some((tag) => tag.id === selectedTagFilter)
+      )
+    }
+
+    setFilteredTodos(filtered)
   }
 
   const handleLogout = async () => {
@@ -47,15 +112,19 @@ const Dashboard = () => {
     e.preventDefault()
     try {
       setError(null)
+      const requestData = {
+        ...formData,
+        tagIds: selectedTags.map((tag) => tag.id),
+      }
       if (editingTodo) {
-        await todoService.updateTodo(editingTodo.id, formData as UpdateTodoRequest)
+        await todoService.updateTodo(editingTodo.id, requestData as UpdateTodoRequest)
       } else {
-        await todoService.createTodo(formData)
+        await todoService.createTodo(requestData)
       }
       setShowAddForm(false)
       setEditingTodo(null)
-      setFormData({ title: '', description: '', dueDate: '', priority: 0 })
-      await loadTodos()
+      resetForm()
+      await loadInitialData()
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to save todo')
       console.error('Error saving todo:', err)
@@ -69,7 +138,10 @@ const Dashboard = () => {
       description: todo.description || '',
       dueDate: todo.dueDate ? todo.dueDate.split('T')[0] : '',
       priority: todo.priority,
+      categoryIds: todo.categories?.map((c) => c.id) || [],
+      tagIds: [],
     })
+    setSelectedTags(todo.tags || [])
     setShowAddForm(true)
   }
 
@@ -98,10 +170,33 @@ const Dashboard = () => {
     }
   }
 
+  const resetForm = () => {
+    setFormData({
+      title: '',
+      description: '',
+      dueDate: '',
+      priority: 0,
+      categoryIds: [],
+      tagIds: [],
+    })
+    setSelectedTags([])
+  }
+
   const cancelForm = () => {
     setShowAddForm(false)
     setEditingTodo(null)
-    setFormData({ title: '', description: '', dueDate: '', priority: 0 })
+    resetForm()
+  }
+
+  const handleCreateTag = async (tagName: string): Promise<Tag> => {
+    try {
+      const newTag = await tagService.createTag({ name: tagName })
+      setTags([...tags, newTag])
+      return newTag
+    } catch (err: any) {
+      console.error('Error creating tag:', err)
+      throw err
+    }
   }
 
   const getPriorityLabel = (priority: number) => {
@@ -142,9 +237,69 @@ const Dashboard = () => {
 
         {error && <div className="error-message">{error}</div>}
 
+        <div className="category-section">
+          <button
+            onClick={() => setShowCategoryManagement(!showCategoryManagement)}
+            className="manage-categories-button"
+          >
+            {showCategoryManagement ? 'Hide' : 'Manage'} Categories
+          </button>
+          {showCategoryManagement && (
+            <CategoryManagement onCategoriesChange={setCategories} />
+          )}
+        </div>
+
+        <div className="filter-section">
+          <div className="filter-group">
+            <label>Filter by Category:</label>
+            <select
+              value={selectedCategoryFilter || ''}
+              onChange={(e) =>
+                setSelectedCategoryFilter(e.target.value ? parseInt(e.target.value) : null)
+              }
+              className="filter-select"
+            >
+              <option value="">All Categories</option>
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="filter-group">
+            <label>Filter by Tag:</label>
+            <select
+              value={selectedTagFilter || ''}
+              onChange={(e) =>
+                setSelectedTagFilter(e.target.value ? parseInt(e.target.value) : null)
+              }
+              className="filter-select"
+            >
+              <option value="">All Tags</option>
+              {tags.map((tag) => (
+                <option key={tag.id} value={tag.id}>
+                  {tag.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          {(selectedCategoryFilter !== null || selectedTagFilter !== null) && (
+            <button
+              onClick={() => {
+                setSelectedCategoryFilter(null)
+                setSelectedTagFilter(null)
+              }}
+              className="clear-filters-button"
+            >
+              Clear Filters
+            </button>
+          )}
+        </div>
+
         <div className="todos-section">
           <div className="todos-header">
-            <h2>Your Todos</h2>
+            <h2>Your Todos ({filteredTodos.length})</h2>
             <button
               onClick={() => {
                 cancelForm()
@@ -179,6 +334,19 @@ const Dashboard = () => {
                   rows={3}
                 />
               </div>
+              {categories.length > 0 && (
+                <CategorySelector
+                  categories={categories}
+                  selectedCategoryIds={formData.categoryIds || []}
+                  onSelectionChange={(ids) => setFormData({ ...formData, categoryIds: ids })}
+                />
+              )}
+              <TagInput
+                availableTags={tags}
+                selectedTags={selectedTags}
+                onTagsChange={setSelectedTags}
+                onCreateTag={handleCreateTag}
+              />
               <div className="form-row">
                 <div className="form-group">
                   <label htmlFor="dueDate">Due Date</label>
@@ -215,11 +383,15 @@ const Dashboard = () => {
 
           {loading ? (
             <div className="loading">Loading todos...</div>
-          ) : todos.length === 0 ? (
-            <div className="no-todos">No todos yet. Create your first todo!</div>
+          ) : filteredTodos.length === 0 ? (
+            <div className="no-todos">
+              {todos.length === 0
+                ? 'No todos yet. Create your first todo!'
+                : 'No todos match the selected filters.'}
+            </div>
           ) : (
             <div className="todos-list">
-              {todos.map((todo) => (
+              {filteredTodos.map((todo) => (
                 <div key={todo.id} className={`todo-item ${todo.isCompleted ? 'completed' : ''}`}>
                   <div className="todo-content">
                     <div className="todo-header">
@@ -235,6 +407,31 @@ const Dashboard = () => {
                       </span>
                     </div>
                     {todo.description && <p className="todo-description">{todo.description}</p>}
+                    {todo.categories && todo.categories.length > 0 && (
+                      <div className="todo-categories">
+                        {todo.categories.map((category) => (
+                          <span
+                            key={category.id}
+                            className="todo-category-badge"
+                            style={{
+                              backgroundColor: category.color,
+                              color: '#fff',
+                            }}
+                          >
+                            {category.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {todo.tags && todo.tags.length > 0 && (
+                      <div className="todo-tags">
+                        {todo.tags.map((tag) => (
+                          <span key={tag.id} className="todo-tag-badge">
+                            #{tag.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     <div className="todo-meta">
                       {todo.dueDate && (
                         <span className="todo-due-date">
