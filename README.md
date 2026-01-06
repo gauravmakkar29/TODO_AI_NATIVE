@@ -25,6 +25,9 @@ Full-stack application with React 18+ frontend and .NET 8 backend implementing u
 - ✅ Input validation and sanitization
 - ✅ CORS configuration for React app
 - ✅ Swagger/OpenAPI documentation
+- ✅ Todo CRUD operations (Create, Read, Update, Delete)
+- ✅ Todo management with priority levels and due dates
+- ✅ User-specific todo isolation
 
 ### Frontend (React 18+)
 - ✅ User registration UI with form validation
@@ -36,6 +39,11 @@ Full-stack application with React 18+ frontend and .NET 8 backend implementing u
 - ✅ Axios interceptors for token refresh
 - ✅ Responsive design
 - ✅ Form validation with Zod and React Hook Form
+- ✅ Todo list display with filtering
+- ✅ Add/Edit/Delete todo functionality
+- ✅ Mark todos as complete/incomplete
+- ✅ Priority indicators and due date display
+- ✅ Modern, intuitive UI for todo management
 
 ## Getting Started
 
@@ -96,6 +104,30 @@ The frontend will be available at `http://localhost:3000`
 - `POST /api/auth/password-reset/confirm` - Confirm password reset
   - Body: `{ email, token, newPassword, confirmPassword }`
 
+### Todo Management
+
+- `GET /api/todo` - Get all todos for the authenticated user
+  - Headers: `Authorization: Bearer {token}`
+  - Returns: Array of todos
+
+- `GET /api/todo/{id}` - Get a specific todo by ID
+  - Headers: `Authorization: Bearer {token}`
+  - Returns: Todo object
+
+- `POST /api/todo` - Create a new todo
+  - Headers: `Authorization: Bearer {token}`
+  - Body: `{ title, description?, dueDate?, priority? }`
+  - Returns: Created todo object
+
+- `PUT /api/todo/{id}` - Update an existing todo
+  - Headers: `Authorization: Bearer {token}`
+  - Body: `{ title?, description?, isCompleted?, dueDate?, priority? }`
+  - Returns: Updated todo object
+
+- `DELETE /api/todo/{id}` - Delete a todo
+  - Headers: `Authorization: Bearer {token}`
+  - Returns: 204 No Content
+
 ## Password Requirements
 
 - Minimum 8 characters
@@ -138,8 +170,9 @@ The frontend will be available at `http://localhost:3000`
 - Email verification and password reset tokens should be sent via email in production.
 - Consider implementing rate limiting for authentication endpoints.
 
-## User Story
+## User Stories
 
+### AIRE-12: Authentication System
 This implementation fulfills the requirements from Jira ticket [AIRE-12](https://3pillarglobal.atlassian.net/browse/AIRE-12):
 
 **As a user, I want to create an account and authenticate securely so that I can access my personal To Do list.**
@@ -152,4 +185,20 @@ All acceptance criteria have been implemented:
 - ✅ Session management and token-based authentication
 - ✅ Password reset functionality
 - ✅ Email verification (optional - structure in place)
+
+### AIRE-13: Todo Management System
+This implementation fulfills the requirements from Jira ticket [AIRE-13](https://3pillarglobal.atlassian.net/browse/AIRE-13):
+
+**As an authenticated user, I want to manage my todos (create, read, update, delete) so that I can organize my tasks effectively.**
+
+All acceptance criteria have been implemented:
+- ✅ User can create new todos with title, description, due date, and priority
+- ✅ User can view all their todos in a list
+- ✅ User can update existing todos (title, description, completion status, due date, priority)
+- ✅ User can delete todos
+- ✅ User can mark todos as complete/incomplete
+- ✅ Todos are isolated per user (users can only see and manage their own todos)
+- ✅ Modern, responsive UI for todo management
+- ✅ Priority levels (Low, Medium, High) with visual indicators
+- ✅ Due date tracking and display
 
