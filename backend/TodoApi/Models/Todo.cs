@@ -29,6 +29,9 @@ public class Todo
     public User? User { get; set; }
     public ICollection<TodoCategory> TodoCategories { get; set; } = new List<TodoCategory>();
     public ICollection<TodoTag> TodoTags { get; set; } = new List<TodoTag>();
+    public ICollection<TodoShare> TodoShares { get; set; } = new List<TodoShare>();
+    public ICollection<TodoComment> TodoComments { get; set; } = new List<TodoComment>();
+    public ICollection<TodoActivity> TodoActivities { get; set; } = new List<TodoActivity>();
 }
 
 

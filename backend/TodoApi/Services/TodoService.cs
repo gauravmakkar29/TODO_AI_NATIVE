@@ -2,16 +2,27 @@ using Microsoft.EntityFrameworkCore;
 using TodoApi.Data;
 using TodoApi.Models;
 using TodoApi.Models.DTOs;
+using SharePermission = TodoApi.Models.SharePermission;
 
 namespace TodoApi.Services;
 
 public class TodoService : ITodoService
 {
     private readonly ApplicationDbContext _context;
+    private readonly ICacheService _cacheService;
+    private readonly IConfiguration _configuration;
+    private readonly ILogger<TodoService> _logger;
 
-    public TodoService(ApplicationDbContext context)
+    public TodoService(
+        ApplicationDbContext context,
+        ICacheService cacheService,
+        IConfiguration configuration,
+        ILogger<TodoService> logger)
     {
         _context = context;
+        _cacheService = cacheService;
+        _configuration = configuration;
+        _logger = logger;
     }
 
     private bool SupportsTransactions()
@@ -24,46 +35,109 @@ public class TodoService : ITodoService
 
     public async Task<IEnumerable<TodoDto>> GetTodosByUserIdAsync(int userId, string? sortBy = null, int? priorityFilter = null)
     {
-        IQueryable<Todo> query = _context.Todos
-            .Where(t => t.UserId == userId && !t.IsArchived) // Exclude archived by default
+        var cacheKey = $"todos:user:{userId}:sort:{sortBy}:priority:{priorityFilter}";
+        var cachedResult = await _cacheService.GetAsync<List<TodoDto>>(cacheKey);
+        
+        if (cachedResult != null)
+        {
+            _logger.LogDebug("Cache hit for todos list: {CacheKey}", cacheKey);
+            return cachedResult;
+        }
+
+        _logger.LogDebug("Cache miss for todos list: {CacheKey}", cacheKey);
+        
+        // Optimize: Use a single query with joins instead of multiple queries
+        var query = from todo in _context.Todos
+                    where todo.UserId == userId && !todo.IsArchived
+                    select todo;
+
+        // Include shared todos
+        var sharedTodoIds = await _context.TodoShares
+            .Where(s => s.SharedWithUserId == userId)
+            .Select(s => s.TodoId)
+            .ToListAsync();
+
+        if (sharedTodoIds.Any())
+        {
+            query = query.Union(_context.Todos.Where(t => sharedTodoIds.Contains(t.Id) && !t.IsArchived));
+        }
+
+        var todosQuery = _context.Todos
+            .Where(t => (t.UserId == userId || sharedTodoIds.Contains(t.Id)) && !t.IsArchived)
             .Include(t => t.TodoCategories)
                 .ThenInclude(tc => tc.Category)
             .Include(t => t.TodoTags)
-                .ThenInclude(tt => tt.Tag);
+                .ThenInclude(tt => tt.Tag)
+            .AsNoTracking(); // Optimize: Use AsNoTracking for read-only queries
 
         // Apply priority filter if provided
         if (priorityFilter.HasValue)
         {
-            query = query.Where(t => t.Priority == priorityFilter.Value);
+            todosQuery = todosQuery.Where(t => t.Priority == priorityFilter.Value);
         }
 
         // Apply sorting
         IOrderedQueryable<Todo> orderedQuery = sortBy?.ToLower() switch
         {
-            "priority" => query.OrderBy(t => t.DisplayOrder).ThenByDescending(t => t.Priority).ThenByDescending(t => t.CreatedAt),
-            "priority_asc" => query.OrderBy(t => t.DisplayOrder).ThenBy(t => t.Priority).ThenByDescending(t => t.CreatedAt),
-            "duedate" => query.OrderBy(t => t.DisplayOrder).ThenBy(t => t.DueDate.HasValue).ThenBy(t => t.DueDate ?? DateTime.MaxValue).ThenByDescending(t => t.CreatedAt),
-            "duedate_desc" => query.OrderBy(t => t.DisplayOrder).ThenByDescending(t => t.DueDate.HasValue).ThenByDescending(t => t.DueDate ?? DateTime.MinValue).ThenByDescending(t => t.CreatedAt),
-            _ => query.OrderBy(t => t.DisplayOrder).ThenByDescending(t => t.CreatedAt)
+            "priority" => todosQuery.OrderBy(t => t.DisplayOrder).ThenByDescending(t => t.Priority).ThenByDescending(t => t.CreatedAt),
+            "priority_asc" => todosQuery.OrderBy(t => t.DisplayOrder).ThenBy(t => t.Priority).ThenByDescending(t => t.CreatedAt),
+            "duedate" => todosQuery.OrderBy(t => t.DisplayOrder).ThenBy(t => t.DueDate.HasValue).ThenBy(t => t.DueDate ?? DateTime.MaxValue).ThenByDescending(t => t.CreatedAt),
+            "duedate_desc" => todosQuery.OrderBy(t => t.DisplayOrder).ThenByDescending(t => t.DueDate.HasValue).ThenByDescending(t => t.DueDate ?? DateTime.MinValue).ThenByDescending(t => t.CreatedAt),
+            _ => todosQuery.OrderBy(t => t.DisplayOrder).ThenByDescending(t => t.CreatedAt)
         };
 
         var todos = await orderedQuery.ToListAsync();
-        return todos.Select(t => MapToDto(t));
+        var result = todos.Select(t => MapToDto(t)).ToList();
+        
+        // Cache the result
+        var expirationMinutes = _configuration.GetValue<int>("Cache:TodoListExpirationMinutes", 2);
+        await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(expirationMinutes));
+        
+        return result;
     }
 
     public async Task<TodoDto?> GetTodoByIdAsync(int todoId, int userId)
     {
+        var cacheKey = $"todo:{todoId}:user:{userId}";
+        var cachedResult = await _cacheService.GetAsync<TodoDto>(cacheKey);
+        
+        if (cachedResult != null)
+        {
+            _logger.LogDebug("Cache hit for todo: {CacheKey}", cacheKey);
+            return cachedResult;
+        }
+
+        _logger.LogDebug("Cache miss for todo: {CacheKey}", cacheKey);
+
         var todo = await _context.Todos
             .Include(t => t.TodoCategories)
                 .ThenInclude(tc => tc.Category)
             .Include(t => t.TodoTags)
                 .ThenInclude(tt => tt.Tag)
-            .FirstOrDefaultAsync(t => t.Id == todoId && t.UserId == userId);
+            .AsNoTracking() // Optimize: Use AsNoTracking for read-only queries
+            .FirstOrDefaultAsync(t => t.Id == todoId);
 
         if (todo == null)
             return null;
 
-        return MapToDto(todo);
+        // Check if user owns the todo or has access via sharing
+        if (todo.UserId != userId)
+        {
+            var hasAccess = await _context.TodoShares
+                .AsNoTracking()
+                .AnyAsync(s => s.TodoId == todoId && s.SharedWithUserId == userId);
+            
+            if (!hasAccess)
+                return null;
+        }
+
+        var result = MapToDto(todo);
+        
+        // Cache the result
+        var expirationMinutes = _configuration.GetValue<int>("Cache:TodoDetailExpirationMinutes", 10);
+        await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(expirationMinutes));
+        
+        return result;
     }
 
     public async Task<TodoDto> CreateTodoAsync(CreateTodoRequest request, int userId)
@@ -147,7 +221,17 @@ public class TodoService : ITodoService
                 .Include(tt => tt.Tag)
                 .LoadAsync();
 
-            return MapToDto(todo);
+            // Invalidate cache for user's todo list
+            await InvalidateUserTodoCacheAsync(userId);
+
+            var result = MapToDto(todo);
+            
+            // Cache the new todo
+            var cacheKey = $"todo:{todo.Id}:user:{userId}";
+            var expirationMinutes = _configuration.GetValue<int>("Cache:TodoDetailExpirationMinutes", 10);
+            await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(expirationMinutes));
+            
+            return result;
         }
         catch
         {
@@ -180,9 +264,27 @@ public class TodoService : ITodoService
             var todo = await _context.Todos
                 .Include(t => t.TodoCategories)
                 .Include(t => t.TodoTags)
-                .FirstOrDefaultAsync(t => t.Id == todoId && t.UserId == userId);
+                .FirstOrDefaultAsync(t => t.Id == todoId);
 
             if (todo == null)
+                return null;
+
+            // Check permissions
+            bool canEdit = false;
+            if (todo.UserId == userId)
+            {
+                canEdit = true; // Owner can always edit
+            }
+            else
+            {
+                // Check if user has edit or admin permission via sharing
+                var share = await _context.TodoShares
+                    .FirstOrDefaultAsync(s => s.TodoId == todoId && s.SharedWithUserId == userId);
+                
+                canEdit = share != null && (share.Permission == SharePermission.Edit || share.Permission == SharePermission.Admin);
+            }
+
+            if (!canEdit)
                 return null;
 
             if (!string.IsNullOrWhiteSpace(request.Title))
@@ -290,7 +392,18 @@ public class TodoService : ITodoService
                 .Include(tt => tt.Tag)
                 .LoadAsync();
 
-            return MapToDto(todo);
+            // Invalidate cache
+            await InvalidateUserTodoCacheAsync(userId);
+            await _cacheService.RemoveAsync($"todo:{todoId}:user:{userId}");
+
+            var result = MapToDto(todo);
+            
+            // Cache the updated todo
+            var cacheKey = $"todo:{todoId}:user:{userId}";
+            var expirationMinutes = _configuration.GetValue<int>("Cache:TodoDetailExpirationMinutes", 10);
+            await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(expirationMinutes));
+            
+            return result;
         }
         catch
         {
@@ -312,13 +425,21 @@ public class TodoService : ITodoService
     public async Task<bool> DeleteTodoAsync(int todoId, int userId)
     {
         var todo = await _context.Todos
-            .FirstOrDefaultAsync(t => t.Id == todoId && t.UserId == userId);
+            .FirstOrDefaultAsync(t => t.Id == todoId);
 
         if (todo == null)
             return false;
 
+        // Only owner can delete
+        if (todo.UserId != userId)
+            return false;
+
         _context.Todos.Remove(todo);
         await _context.SaveChangesAsync();
+
+        // Invalidate cache
+        await InvalidateUserTodoCacheAsync(userId);
+        await _cacheService.RemoveAsync($"todo:{todoId}:user:{userId}");
 
         return true;
     }
@@ -331,6 +452,7 @@ public class TodoService : ITodoService
                 .ThenInclude(tc => tc.Category)
             .Include(t => t.TodoTags)
                 .ThenInclude(tt => tt.Tag)
+            .AsNoTracking() // Optimize: Use AsNoTracking for read-only queries
             .OrderByDescending(t => t.CreatedAt)
             .ToListAsync();
 
@@ -345,6 +467,7 @@ public class TodoService : ITodoService
                 .ThenInclude(tc => tc.Category)
             .Include(t => t.TodoTags)
                 .ThenInclude(tt => tt.Tag)
+            .AsNoTracking() // Optimize: Use AsNoTracking for read-only queries
             .OrderByDescending(t => t.CreatedAt)
             .ToListAsync();
 
@@ -353,12 +476,28 @@ public class TodoService : ITodoService
 
     public async Task<SearchFilterResponse> SearchAndFilterTodosAsync(int userId, SearchFilterRequest request)
     {
-        var query = _context.Todos
+        // Get todos owned by user
+        var ownedTodoIds = await _context.Todos
             .Where(t => t.UserId == userId)
+            .Select(t => t.Id)
+            .ToListAsync();
+
+        // Get todos shared with user
+        var sharedTodoIds = await _context.TodoShares
+            .Where(s => s.SharedWithUserId == userId)
+            .Select(s => s.TodoId)
+            .ToListAsync();
+
+        // Combine both lists
+        var allTodoIds = ownedTodoIds.Union(sharedTodoIds).ToList();
+
+        var query = _context.Todos
+            .Where(t => allTodoIds.Contains(t.Id))
             .Include(t => t.TodoCategories)
                 .ThenInclude(tc => tc.Category)
             .Include(t => t.TodoTags)
                 .ThenInclude(tt => tt.Tag)
+            .AsNoTracking() // Optimize: Use AsNoTracking for read-only queries
             .AsQueryable();
 
         // Text search - search in title, description, category names, and tag names
@@ -553,8 +692,20 @@ public class TodoService : ITodoService
 
     public async Task<TodoStatisticsDto> GetTodoStatisticsAsync(int userId)
     {
+        var cacheKey = $"statistics:user:{userId}";
+        var cachedResult = await _cacheService.GetAsync<TodoStatisticsDto>(cacheKey);
+        
+        if (cachedResult != null)
+        {
+            _logger.LogDebug("Cache hit for statistics: {CacheKey}", cacheKey);
+            return cachedResult;
+        }
+
+        _logger.LogDebug("Cache miss for statistics: {CacheKey}", cacheKey);
+
         var todos = await _context.Todos
             .Where(t => t.UserId == userId)
+            .AsNoTracking() // Optimize: Use AsNoTracking for read-only queries
             .ToListAsync();
 
         var now = DateTime.UtcNow;
@@ -575,7 +726,7 @@ public class TodoService : ITodoService
             .GroupBy(t => t.CompletedAt!.Value.Date)
             .ToDictionary(g => g.Key.ToString("yyyy-MM-dd"), g => g.Count());
 
-        return new TodoStatisticsDto
+        var result = new TodoStatisticsDto
         {
             TotalTodos = totalTodos,
             CompletedTodos = completedTodos,
@@ -588,6 +739,20 @@ public class TodoService : ITodoService
             LowPriorityTodos = lowPriorityTodos,
             CompletionByDate = completionByDate
         };
+
+        // Cache the result
+        var expirationMinutes = _configuration.GetValue<int>("Cache:StatisticsExpirationMinutes", 1);
+        await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(expirationMinutes));
+        
+        return result;
+    }
+
+    private async Task InvalidateUserTodoCacheAsync(int userId)
+    {
+        // Remove all cache entries for user's todo list
+        // Note: Pattern-based removal is limited with distributed cache
+        // In production, consider maintaining a list of cache keys per user
+        await _cacheService.RemoveByPatternAsync($"todos:user:{userId}:*");
     }
 
     public async Task<int> ArchiveOldCompletedTodosAsync(int userId, int daysOld = 30)

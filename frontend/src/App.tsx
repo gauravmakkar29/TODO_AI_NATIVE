@@ -1,16 +1,21 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { lazy, Suspense } from 'react'
 import { AuthProvider } from './contexts/AuthContext'
-import Login from './pages/Login'
-import Register from './pages/Register'
-import Dashboard from './pages/Dashboard'
-import PasswordReset from './pages/PasswordReset'
+import LoadingSpinner from './components/LoadingSpinner'
 import ProtectedRoute from './components/ProtectedRoute'
 import './App.css'
+
+// Lazy load components for code splitting
+const Login = lazy(() => import('./pages/Login'))
+const Register = lazy(() => import('./pages/Register'))
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const PasswordReset = lazy(() => import('./pages/PasswordReset'))
 
 function App() {
   return (
     <AuthProvider>
       <Router>
+        <Suspense fallback={<LoadingSpinner />}>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
@@ -25,6 +30,7 @@ function App() {
           />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
         </Routes>
+        </Suspense>
       </Router>
     </AuthProvider>
   )

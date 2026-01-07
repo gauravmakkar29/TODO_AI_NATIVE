@@ -18,6 +18,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<TodoCategory> TodoCategories { get; set; }
     public DbSet<TodoTag> TodoTags { get; set; }
     public DbSet<FilterPreset> FilterPresets { get; set; }
+    public DbSet<TodoShare> TodoShares { get; set; }
+    public DbSet<TodoComment> TodoComments { get; set; }
+    public DbSet<TodoActivity> TodoActivities { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -142,6 +145,78 @@ public class ApplicationDbContext : DbContext
             
             // Performance index
             entity.HasIndex(e => e.UserId);
+        });
+
+        // Configure TodoShare entity
+        modelBuilder.Entity<TodoShare>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasOne(e => e.Todo)
+                  .WithMany()
+                  .HasForeignKey(e => e.TodoId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.SharedWithUser)
+                  .WithMany()
+                  .HasForeignKey(e => e.SharedWithUserId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.SharedByUser)
+                  .WithMany()
+                  .HasForeignKey(e => e.SharedByUserId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.Property(e => e.CreatedAt).IsRequired();
+            
+            // Performance indexes
+            entity.HasIndex(e => e.TodoId);
+            entity.HasIndex(e => e.SharedWithUserId);
+            entity.HasIndex(e => e.SharedByUserId);
+            entity.HasIndex(e => new { e.TodoId, e.SharedWithUserId }).IsUnique(); // Prevent duplicate shares
+        });
+
+        // Configure TodoComment entity
+        modelBuilder.Entity<TodoComment>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasOne(e => e.Todo)
+                  .WithMany()
+                  .HasForeignKey(e => e.TodoId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.User)
+                  .WithMany()
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.Property(e => e.Comment).IsRequired().HasMaxLength(2000);
+            entity.Property(e => e.CreatedAt).IsRequired();
+            
+            // Performance indexes
+            entity.HasIndex(e => e.TodoId);
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => e.CreatedAt);
+        });
+
+        // Configure TodoActivity entity
+        modelBuilder.Entity<TodoActivity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasOne(e => e.Todo)
+                  .WithMany()
+                  .HasForeignKey(e => e.TodoId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.User)
+                  .WithMany()
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.RelatedUser)
+                  .WithMany()
+                  .HasForeignKey(e => e.RelatedUserId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.CreatedAt).IsRequired();
+            
+            // Performance indexes
+            entity.HasIndex(e => e.TodoId);
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => e.CreatedAt);
+            entity.HasIndex(e => new { e.TodoId, e.CreatedAt });
         });
     }
 }

@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { todoService } from '../services/todoService'
 import { categoryService, tagService } from '../services/categoryService'
+import { sharingService } from '../services/sharingService'
 import { Todo, CreateTodoRequest, UpdateTodoRequest, TodoStatistics } from '../types/todo'
+import { SharedTodo } from '../types/sharing'
 import { Category, Tag } from '../types/category'
 import CategorySelector from '../components/CategorySelector'
 import TagInput from '../components/TagInput'
@@ -15,6 +17,8 @@ import ThemeToggle from '../components/ThemeToggle'
 import LoadingSpinner from '../components/LoadingSpinner'
 import ErrorMessage from '../components/ErrorMessage'
 import DraggableTodoList from '../components/DraggableTodoList'
+import ShareTask from '../components/ShareTask'
+import TaskComments from '../components/TaskComments'
 
 const Dashboard = () => {
   const { user, logout } = useAuth()
@@ -59,6 +63,9 @@ const Dashboard = () => {
     tagIds: [],
   })
   const [selectedTags, setSelectedTags] = useState<Tag[]>([])
+  const [sharedTodos, setSharedTodos] = useState<SharedTodo[]>([])
+  const [sharingTodoId, setSharingTodoId] = useState<number | null>(null)
+  const [viewingCommentsTodoId, setViewingCommentsTodoId] = useState<number | null>(null)
 
   useEffect(() => {
     loadInitialData()
@@ -80,12 +87,21 @@ const Dashboard = () => {
     try {
       setLoading(true)
       setError(null)
-      await Promise.all([loadTodos(), loadCategories(), loadTags(), loadStatistics()])
+      await Promise.all([loadTodos(), loadSharedTodos(), loadCategories(), loadTags(), loadStatistics()])
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to load data')
       console.error('Error loading data:', err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadSharedTodos = async () => {
+    try {
+      const data = await sharingService.getSharedTodos()
+      setSharedTodos(data)
+    } catch (err: any) {
+      console.error('Error loading shared todos:', err)
     }
   }
 
@@ -276,15 +292,67 @@ const Dashboard = () => {
         ...formData,
         tagIds: selectedTags.map((tag) => tag.id),
       }
+      
       if (editingTodo) {
-        await todoService.updateTodo(editingTodo.id, requestData as UpdateTodoRequest)
+        // Optimistic update: update UI immediately
+        const optimisticTodo: Todo = {
+          ...editingTodo,
+          ...requestData,
+          updatedAt: new Date().toISOString(),
+        }
+        setTodos(prevTodos => 
+          prevTodos.map(t => t.id === editingTodo.id ? optimisticTodo : t)
+        )
+        
+        try {
+          const updated = await todoService.updateTodo(editingTodo.id, requestData as UpdateTodoRequest)
+          // Update with server response
+          setTodos(prevTodos => 
+            prevTodos.map(t => t.id === editingTodo.id ? updated : t)
+          )
+        } catch (err) {
+          // Rollback on error
+          setTodos(prevTodos => 
+            prevTodos.map(t => t.id === editingTodo.id ? editingTodo : t)
+          )
+          throw err
+        }
       } else {
-        await todoService.createTodo(requestData)
+        // Optimistic update: add temporary todo immediately
+        const tempId = Date.now() // Temporary ID
+        const optimisticTodo: Todo = {
+          id: tempId,
+          title: requestData.title,
+          description: requestData.description,
+          priority: requestData.priority ?? 0, // Default to 0 if undefined
+          isCompleted: false,
+          status: 0,
+          isArchived: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          categories: categories.filter(c => requestData.categoryIds?.includes(c.id)),
+          tags: selectedTags,
+          isOverdue: false,
+          isApproachingDue: false,
+        }
+        setTodos(prevTodos => [optimisticTodo, ...prevTodos])
+        
+        try {
+          const created = await todoService.createTodo(requestData)
+          // Replace temporary todo with server response
+          setTodos(prevTodos => 
+            prevTodos.map(t => t.id === tempId ? created : t)
+          )
+        } catch (err) {
+          // Rollback on error
+          setTodos(prevTodos => prevTodos.filter(t => t.id !== tempId))
+          throw err
+        }
       }
+      
       setShowAddForm(false)
       setEditingTodo(null)
       resetForm()
-      await loadInitialData()
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to save todo')
       console.error('Error saving todo:', err)
@@ -310,30 +378,97 @@ const Dashboard = () => {
     if (!window.confirm('Are you sure you want to delete this todo?')) {
       return
     }
+    
+    // Optimistic update: remove from UI immediately
+    const deletedTodo = todos.find(t => t.id === id)
+    setTodos(prevTodos => prevTodos.filter(t => t.id !== id))
+    
     try {
       setError(null)
       await todoService.deleteTodo(id)
-      await loadTodos()
+      // Success - already removed from UI
     } catch (err: any) {
+      // Rollback on error
+      if (deletedTodo) {
+        setTodos(prevTodos => [...prevTodos, deletedTodo].sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        ))
+      }
       setError(err.response?.data?.message || 'Failed to delete todo')
       console.error('Error deleting todo:', err)
     }
   }
 
   const handleToggleComplete = async (todo: Todo) => {
-    try {
-      setError(null)
       const wasCompleted = todo.isCompleted
-      await todoService.updateTodo(todo.id, { isCompleted: !todo.isCompleted })
+    
+    // Optimistic update: update UI immediately
+    const optimisticTodo: Todo = {
+      ...todo,
+      isCompleted: !wasCompleted,
+      status: !wasCompleted ? 2 : 0, // 2 = Completed, 0 = Pending
+      completedAt: !wasCompleted ? new Date().toISOString() : undefined,
+      updatedAt: new Date().toISOString(),
+    }
+    
+    setTodos(prevTodos => 
+      prevTodos.map(t => t.id === todo.id ? optimisticTodo : t)
+    )
       
       // Store for undo functionality
       if (!wasCompleted) {
         setLastCompletedTodo(todo)
       }
       
-      await loadTodos()
+    // Update statistics optimistically
+    if (statistics) {
+      setStatistics({
+        ...statistics,
+        completedTodos: wasCompleted 
+          ? statistics.completedTodos - 1 
+          : statistics.completedTodos + 1,
+        pendingTodos: wasCompleted 
+          ? statistics.pendingTodos + 1 
+          : statistics.pendingTodos - 1,
+        completionRate: statistics.totalTodos > 0
+          ? ((wasCompleted ? statistics.completedTodos - 1 : statistics.completedTodos + 1) / statistics.totalTodos) * 100
+          : 0,
+      })
+    }
+    
+    try {
+      setError(null)
+      const updated = await todoService.updateTodo(todo.id, { isCompleted: !wasCompleted })
+      
+      // Update with server response
+      setTodos(prevTodos => 
+        prevTodos.map(t => t.id === todo.id ? updated : t)
+      )
+      
+      // Reload statistics to ensure accuracy
       await loadStatistics()
     } catch (err: any) {
+      // Rollback on error
+      setTodos(prevTodos => 
+        prevTodos.map(t => t.id === todo.id ? todo : t)
+      )
+      
+      // Rollback statistics
+      if (statistics) {
+        setStatistics({
+          ...statistics,
+          completedTodos: wasCompleted 
+            ? statistics.completedTodos + 1 
+            : statistics.completedTodos - 1,
+          pendingTodos: wasCompleted 
+            ? statistics.pendingTodos - 1 
+            : statistics.pendingTodos + 1,
+          completionRate: statistics.totalTodos > 0
+            ? ((wasCompleted ? statistics.completedTodos + 1 : statistics.completedTodos - 1) / statistics.totalTodos) * 100
+            : 0,
+        })
+      }
+      
       setError(err.response?.data?.message || 'Failed to update todo')
       console.error('Error updating todo:', err)
     }
@@ -811,6 +946,17 @@ const Dashboard = () => {
                         <h3 className={`text-lg font-semibold text-gray-900 dark:text-white ${todo.isCompleted ? 'line-through' : ''}`}>
                           {todo.title}
                         </h3>
+                        {(() => {
+                          const sharedTodo = sharedTodos.find(st => st.id === todo.id)
+                          if (sharedTodo) {
+                            return (
+                              <span className="px-2 py-1 text-xs font-semibold text-white bg-blue-500 rounded" title={`Shared with ${sharedTodo.sharedWith.length} user(s)`}>
+                                Shared
+                              </span>
+                            )
+                          }
+                          return null
+                        })()}
                         {todo.isOverdue && (
                           <span className="px-2 py-1 text-xs font-semibold text-white bg-red-500 rounded">Overdue</span>
                         )}
@@ -871,17 +1017,40 @@ const Dashboard = () => {
                     </div>
                     <div className="flex gap-2">
                       <button 
+                        onClick={() => setViewingCommentsTodoId(todo.id)} 
+                        className="px-3 py-1 text-sm bg-purple-500 text-white rounded hover:bg-purple-600 transition-colors"
+                        title="View comments"
+                      >
+                        💬
+                      </button>
+                      <button 
+                        onClick={() => setSharingTodoId(todo.id)} 
+                        className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600 transition-colors"
+                        title="Share task"
+                      >
+                        Share
+                      </button>
+                      <button 
                         onClick={() => handleEdit(todo)} 
                         className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
                       >
                         Edit
                       </button>
-                      <button 
-                        onClick={() => handleDelete(todo.id)} 
-                        className="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
-                      >
-                        Delete
-                      </button>
+                      {(() => {
+                        const sharedTodo = sharedTodos.find(st => st.id === todo.id)
+                        // Only owner can delete
+                        if (!sharedTodo || sharedTodo.ownerUserId === user?.id) {
+                          return (
+                            <button 
+                              onClick={() => handleDelete(todo.id)} 
+                              className="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+                            >
+                              Delete
+                            </button>
+                          )
+                        }
+                        return null
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -892,6 +1061,38 @@ const Dashboard = () => {
         </div>
         </div>
       </div>
+
+      {sharingTodoId && (
+        <ShareTask
+          todoId={sharingTodoId}
+          onClose={() => {
+            setSharingTodoId(null)
+            loadSharedTodos()
+            loadTodos()
+          }}
+          onShareSuccess={() => {
+            loadSharedTodos()
+            loadTodos()
+          }}
+        />
+      )}
+
+      {viewingCommentsTodoId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-bold">Task Comments</h2>
+              <button
+                onClick={() => setViewingCommentsTodoId(null)}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+            <TaskComments todoId={viewingCommentsTodoId} currentUserEmail={user?.email} />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

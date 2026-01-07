@@ -20,6 +20,7 @@ public class TodoController : ControllerBase
     }
 
     [HttpGet]
+    [ResponseCache(Duration = 120, VaryByQueryKeys = new[] { "sortBy", "priorityFilter" })]
     public async Task<ActionResult<IEnumerable<TodoDto>>> GetTodos([FromQuery] string? sortBy = null, [FromQuery] int? priorityFilter = null)
     {
         var userId = GetUserId();
@@ -31,6 +32,7 @@ public class TodoController : ControllerBase
     }
 
     [HttpGet("{id}")]
+    [ResponseCache(Duration = 600, VaryByQueryKeys = new[] { "id" })]
     public async Task<ActionResult<TodoDto>> GetTodo(int id)
     {
         var userId = GetUserId();
@@ -200,6 +202,7 @@ public class TodoController : ControllerBase
     }
 
     [HttpGet("statistics")]
+    [ResponseCache(Duration = 60)]
     public async Task<ActionResult<TodoStatisticsDto>> GetStatistics()
     {
         var userId = GetUserId();

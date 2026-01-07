@@ -9,6 +9,7 @@ using Serilog;
 using System.Text;
 using TodoApi.Data;
 using TodoApi.Services;
+using TodoApi.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -134,6 +135,44 @@ builder.Services.Configure<IpRateLimitPolicies>(builder.Configuration.GetSection
 builder.Services.AddInMemoryRateLimiting();
 builder.Services.AddSingleton<IRateLimitConfiguration, RateLimitConfiguration>();
 
+// Redis Caching
+var redisConnectionString = builder.Configuration.GetConnectionString("Redis");
+var cacheEnabled = builder.Configuration.GetValue<bool>("Cache:Enabled", true);
+
+if (cacheEnabled && !string.IsNullOrEmpty(redisConnectionString))
+{
+    try
+    {
+        builder.Services.AddStackExchangeRedisCache(options =>
+        {
+            options.Configuration = redisConnectionString;
+            options.InstanceName = "TodoApi:";
+        });
+        Log.Information("Redis caching enabled: {ConnectionString}", redisConnectionString);
+    }
+    catch (Exception ex)
+    {
+        Log.Warning(ex, "Failed to configure Redis. Falling back to in-memory cache.");
+        builder.Services.AddDistributedMemoryCache();
+    }
+}
+else
+{
+    Log.Information("Using in-memory distributed cache (Redis not configured)");
+    builder.Services.AddDistributedMemoryCache();
+}
+
+// Response Caching
+builder.Services.AddResponseCaching(options =>
+{
+    options.MaximumBodySize = 1024 * 1024; // 1 MB
+    options.SizeLimit = 100 * 1024 * 1024; // 100 MB
+    options.UseCaseSensitivePaths = false;
+});
+
+// Cache Service
+builder.Services.AddScoped<ICacheService, CacheService>();
+
 // CORS
 builder.Services.AddCors(options =>
 {
@@ -146,6 +185,9 @@ builder.Services.AddCors(options =>
     });
 });
 
+// SignalR
+builder.Services.AddSignalR();
+
 // Services
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserService, UserService>();
@@ -154,6 +196,8 @@ builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<ITagService, TagService>();
 builder.Services.AddScoped<IFilterPresetService, FilterPresetService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<ISharingService, SharingService>();
+builder.Services.AddScoped<ICommentService, CommentService>();
 
 // Background Services
 builder.Services.AddHostedService<ReminderBackgroundService>();
@@ -201,6 +245,9 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+// Performance Monitoring Middleware (must be early in pipeline)
+app.UseMiddleware<TodoApi.Middleware.PerformanceMonitoringMiddleware>();
+
 // Use Serilog request logging
 app.UseSerilogRequestLogging(options =>
 {
@@ -212,6 +259,9 @@ app.UseSerilogRequestLogging(options =>
 
 app.UseHttpsRedirection();
 
+// Response Caching (must be before UseRouting)
+app.UseResponseCaching();
+
 // Rate Limiting (must be before CORS)
 app.UseIpRateLimiting();
 
@@ -220,6 +270,7 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers().RequireRateLimiting("ApiPolicy");
+app.MapHub<TodoHub>("/hubs/todo");
 
 Log.Information("Todo API started successfully");
 
