@@ -62,7 +62,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     loadTodos()
-  }, [sortBy, priorityFilter])
+  }, [advancedFilters.sortBy, advancedFilters.sortOrder, priorityFilter])
 
   const loadInitialData = async () => {
     try {
@@ -79,7 +79,10 @@ const Dashboard = () => {
 
   const loadTodos = async () => {
     try {
-      const data = await todoService.getTodos(sortBy || undefined, priorityFilter || undefined)
+      const sortByValue = advancedFilters.sortBy === 'createdAt' ? '' : 
+                          advancedFilters.sortBy === 'priority' ? 'priority' :
+                          advancedFilters.sortBy === 'dueDate' ? 'duedate' : '';
+      const data = await todoService.getTodos(sortByValue || undefined, priorityFilter || undefined)
       setTodos(data)
     } catch (err: any) {
       console.error('Error loading todos:', err)
@@ -439,20 +442,6 @@ const Dashboard = () => {
               <option value="2">High</option>
               <option value="1">Medium</option>
               <option value="0">Low</option>
-            </select>
-          </div>
-          <div className="filter-group">
-            <label>Sort By:</label>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="filter-select"
-            >
-              <option value="">Created Date (Newest)</option>
-              <option value="priority">Priority (High to Low)</option>
-              <option value="priority_asc">Priority (Low to High)</option>
-              <option value="duedate">Due Date (Earliest)</option>
-              <option value="duedate_desc">Due Date (Latest)</option>
             </select>
           </div>
           {(selectedCategoryFilter !== null || selectedTagFilter !== null || priorityFilter !== null) && (
