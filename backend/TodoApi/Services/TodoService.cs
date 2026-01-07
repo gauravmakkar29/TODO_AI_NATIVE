@@ -29,7 +29,7 @@ public class TodoService : ITodoService
             query = query.Where(t => t.Priority == priorityFilter.Value);
         }
 
-        // Apply sorting - prioritize DisplayOrder for drag-and-drop
+        // Apply sorting
         IOrderedQueryable<Todo> orderedQuery = sortBy?.ToLower() switch
         {
             "priority" => query.OrderBy(t => t.DisplayOrder).ThenByDescending(t => t.Priority).ThenByDescending(t => t.CreatedAt),
@@ -60,118 +60,26 @@ public class TodoService : ITodoService
 
     public async Task<TodoDto> CreateTodoAsync(CreateTodoRequest request, int userId)
     {
-        // Get the maximum DisplayOrder for this user to set the new todo's order
-        var maxOrder = await _context.Todos
-            .Where(t => t.UserId == userId)
-            .Select(t => (int?)t.DisplayOrder)
-            .DefaultIfEmpty(-1)
-            .MaxAsync() ?? -1;
-
-        var todo = new Todo
+        // Use transaction to ensure data integrity
+        using var transaction = await _context.Database.BeginTransactionAsync();
+        try
         {
-            UserId = userId,
-            Title = request.Title,
-            Description = request.Description,
-            DueDate = request.DueDate,
-            ReminderDate = request.ReminderDate,
-            Priority = request.Priority,
-            DisplayOrder = maxOrder + 1,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        _context.Todos.Add(todo);
-        await _context.SaveChangesAsync();
-
-        // Assign categories
-        if (request.CategoryIds != null && request.CategoryIds.Any())
-        {
-            var validCategoryIds = await _context.Categories
-                .Where(c => request.CategoryIds.Contains(c.Id))
-                .Select(c => c.Id)
-                .ToListAsync();
-
-            foreach (var categoryId in validCategoryIds)
+            var todo = new Todo
             {
-                todo.TodoCategories.Add(new TodoCategory
-                {
-                    TodoId = todo.Id,
-                    CategoryId = categoryId
-                });
-            }
-        }
+                UserId = userId,
+                Title = request.Title,
+                Description = request.Description,
+                DueDate = request.DueDate,
+                ReminderDate = request.ReminderDate,
+                Priority = request.Priority,
+                CreatedAt = DateTime.UtcNow
+            };
 
-        // Assign tags
-        if (request.TagIds != null && request.TagIds.Any())
-        {
-            var validTagIds = await _context.Tags
-                .Where(t => request.TagIds.Contains(t.Id))
-                .Select(t => t.Id)
-                .ToListAsync();
+            _context.Todos.Add(todo);
+            await _context.SaveChangesAsync();
 
-            foreach (var tagId in validTagIds)
-            {
-                todo.TodoTags.Add(new TodoTag
-                {
-                    TodoId = todo.Id,
-                    TagId = tagId
-                });
-            }
-        }
-
-        await _context.SaveChangesAsync();
-
-        // Reload with relationships
-        await _context.Entry(todo)
-            .Collection(t => t.TodoCategories)
-            .Query()
-            .Include(tc => tc.Category)
-            .LoadAsync();
-
-        await _context.Entry(todo)
-            .Collection(t => t.TodoTags)
-            .Query()
-            .Include(tt => tt.Tag)
-            .LoadAsync();
-
-        return MapToDto(todo);
-    }
-
-    public async Task<TodoDto?> UpdateTodoAsync(int todoId, UpdateTodoRequest request, int userId)
-    {
-        var todo = await _context.Todos
-            .Include(t => t.TodoCategories)
-            .Include(t => t.TodoTags)
-            .FirstOrDefaultAsync(t => t.Id == todoId && t.UserId == userId);
-
-        if (todo == null)
-            return null;
-
-        if (!string.IsNullOrWhiteSpace(request.Title))
-            todo.Title = request.Title;
-
-        if (request.Description != null)
-            todo.Description = request.Description;
-
-        if (request.IsCompleted.HasValue)
-            todo.IsCompleted = request.IsCompleted.Value;
-
-        if (request.DueDate.HasValue)
-            todo.DueDate = request.DueDate;
-
-        if (request.ReminderDate.HasValue)
-            todo.ReminderDate = request.ReminderDate;
-
-        if (request.Priority.HasValue)
-            todo.Priority = request.Priority.Value;
-
-        // Update categories if provided
-        if (request.CategoryIds != null)
-        {
-            // Remove existing categories
-            _context.TodoCategories.RemoveRange(todo.TodoCategories);
-
-            // Add new categories
-            if (request.CategoryIds.Any())
+            // Assign categories
+            if (request.CategoryIds != null && request.CategoryIds.Any())
             {
                 var validCategoryIds = await _context.Categories
                     .Where(c => request.CategoryIds.Contains(c.Id))
@@ -187,16 +95,9 @@ public class TodoService : ITodoService
                     });
                 }
             }
-        }
 
-        // Update tags if provided
-        if (request.TagIds != null)
-        {
-            // Remove existing tags
-            _context.TodoTags.RemoveRange(todo.TodoTags);
-
-            // Add new tags
-            if (request.TagIds.Any())
+            // Assign tags
+            if (request.TagIds != null && request.TagIds.Any())
             {
                 var validTagIds = await _context.Tags
                     .Where(t => request.TagIds.Contains(t.Id))
@@ -212,26 +113,139 @@ public class TodoService : ITodoService
                     });
                 }
             }
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            // Reload with relationships
+            await _context.Entry(todo)
+                .Collection(t => t.TodoCategories)
+                .Query()
+                .Include(tc => tc.Category)
+                .LoadAsync();
+
+            await _context.Entry(todo)
+                .Collection(t => t.TodoTags)
+                .Query()
+                .Include(tt => tt.Tag)
+                .LoadAsync();
+
+            return MapToDto(todo);
         }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
+    }
 
-        todo.UpdatedAt = DateTime.UtcNow;
+    public async Task<TodoDto?> UpdateTodoAsync(int todoId, UpdateTodoRequest request, int userId)
+    {
+        // Use transaction to ensure data integrity
+        using var transaction = await _context.Database.BeginTransactionAsync();
+        try
+        {
+            var todo = await _context.Todos
+                .Include(t => t.TodoCategories)
+                .Include(t => t.TodoTags)
+                .FirstOrDefaultAsync(t => t.Id == todoId && t.UserId == userId);
 
-        await _context.SaveChangesAsync();
+            if (todo == null)
+                return null;
 
-        // Reload with relationships
-        await _context.Entry(todo)
-            .Collection(t => t.TodoCategories)
-            .Query()
-            .Include(tc => tc.Category)
-            .LoadAsync();
+            if (!string.IsNullOrWhiteSpace(request.Title))
+                todo.Title = request.Title;
 
-        await _context.Entry(todo)
-            .Collection(t => t.TodoTags)
-            .Query()
-            .Include(tt => tt.Tag)
-            .LoadAsync();
+            if (request.Description != null)
+                todo.Description = request.Description;
 
-        return MapToDto(todo);
+            if (request.IsCompleted.HasValue)
+                todo.IsCompleted = request.IsCompleted.Value;
+
+            if (request.DueDate.HasValue)
+                todo.DueDate = request.DueDate;
+
+            if (request.ReminderDate.HasValue)
+                todo.ReminderDate = request.ReminderDate;
+
+            if (request.Priority.HasValue)
+                todo.Priority = request.Priority.Value;
+
+            // Update categories if provided
+            if (request.CategoryIds != null)
+            {
+                // Remove existing categories
+                _context.TodoCategories.RemoveRange(todo.TodoCategories);
+
+                // Add new categories
+                if (request.CategoryIds.Any())
+                {
+                    var validCategoryIds = await _context.Categories
+                        .Where(c => request.CategoryIds.Contains(c.Id))
+                        .Select(c => c.Id)
+                        .ToListAsync();
+
+                    foreach (var categoryId in validCategoryIds)
+                    {
+                        todo.TodoCategories.Add(new TodoCategory
+                        {
+                            TodoId = todo.Id,
+                            CategoryId = categoryId
+                        });
+                    }
+                }
+            }
+
+            // Update tags if provided
+            if (request.TagIds != null)
+            {
+                // Remove existing tags
+                _context.TodoTags.RemoveRange(todo.TodoTags);
+
+                // Add new tags
+                if (request.TagIds.Any())
+                {
+                    var validTagIds = await _context.Tags
+                        .Where(t => request.TagIds.Contains(t.Id))
+                        .Select(t => t.Id)
+                        .ToListAsync();
+
+                    foreach (var tagId in validTagIds)
+                    {
+                        todo.TodoTags.Add(new TodoTag
+                        {
+                            TodoId = todo.Id,
+                            TagId = tagId
+                        });
+                    }
+                }
+            }
+
+            todo.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            // Reload with relationships
+            await _context.Entry(todo)
+                .Collection(t => t.TodoCategories)
+                .Query()
+                .Include(tc => tc.Category)
+                .LoadAsync();
+
+            await _context.Entry(todo)
+                .Collection(t => t.TodoTags)
+                .Query()
+                .Include(tt => tt.Tag)
+                .LoadAsync();
+
+            return MapToDto(todo);
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     public async Task<bool> DeleteTodoAsync(int todoId, int userId)

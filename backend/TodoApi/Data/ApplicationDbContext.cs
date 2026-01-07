@@ -40,6 +40,11 @@ public class ApplicationDbContext : DbContext
                   .WithMany()
                   .HasForeignKey(e => e.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
+            
+            // Performance indexes
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => e.Token);
+            entity.HasIndex(e => e.ExpiresAt);
         });
 
         modelBuilder.Entity<Todo>(entity =>
@@ -52,6 +57,13 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Title).IsRequired().HasMaxLength(500);
             entity.Property(e => e.Description).HasMaxLength(2000);
             entity.Property(e => e.CreatedAt).IsRequired();
+            
+            // Performance indexes
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => new { e.UserId, e.IsCompleted });
+            entity.HasIndex(e => new { e.UserId, e.Priority });
+            entity.HasIndex(e => new { e.UserId, e.DueDate });
+            entity.HasIndex(e => new { e.UserId, e.CreatedAt });
         });
 
         modelBuilder.Entity<Category>(entity =>
@@ -86,6 +98,10 @@ public class ApplicationDbContext : DbContext
                   .WithMany(c => c.TodoCategories)
                   .HasForeignKey(e => e.CategoryId)
                   .OnDelete(DeleteBehavior.Cascade);
+            
+            // Performance indexes
+            entity.HasIndex(e => e.TodoId);
+            entity.HasIndex(e => e.CategoryId);
         });
 
         // Configure many-to-many relationship: Todo <-> Tag
@@ -100,6 +116,10 @@ public class ApplicationDbContext : DbContext
                   .WithMany(t => t.TodoTags)
                   .HasForeignKey(e => e.TagId)
                   .OnDelete(DeleteBehavior.Cascade);
+            
+            // Performance indexes
+            entity.HasIndex(e => e.TodoId);
+            entity.HasIndex(e => e.TagId);
         });
 
         modelBuilder.Entity<FilterPreset>(entity =>
@@ -116,6 +136,9 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.SortBy).HasMaxLength(50);
             entity.Property(e => e.SortOrder).HasMaxLength(10);
             entity.Property(e => e.CreatedAt).IsRequired();
+            
+            // Performance index
+            entity.HasIndex(e => e.UserId);
         });
     }
 }

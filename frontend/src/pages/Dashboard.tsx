@@ -65,7 +65,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     loadTodos()
-  }, [advancedFilters.sortBy, priorityFilter])
+  }, [advancedFilters.sortBy, advancedFilters.sortOrder, priorityFilter])
 
   const loadInitialData = async () => {
     try {
@@ -82,8 +82,10 @@ const Dashboard = () => {
 
   const loadTodos = async () => {
     try {
-      const sortBy = advancedFilters.sortBy === 'createdAt' ? '' : advancedFilters.sortBy || ''
-      const data = await todoService.getTodos(sortBy || undefined, priorityFilter || undefined)
+      const sortByValue = advancedFilters.sortBy === 'createdAt' ? '' : 
+                          advancedFilters.sortBy === 'priority' ? 'priority' :
+                          advancedFilters.sortBy === 'dueDate' ? 'duedate' : '';
+      const data = await todoService.getTodos(sortByValue || undefined, priorityFilter || undefined)
       setTodos(data)
     } catch (err: any) {
       console.error('Error loading todos:', err)
