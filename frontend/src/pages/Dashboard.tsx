@@ -354,15 +354,6 @@ const Dashboard = () => {
     }
   }
 
-  const handleBulkSelect = (todoId: number, checked: boolean) => {
-    const newSelected = new Set(selectedTodoIds)
-    if (checked) {
-      newSelected.add(todoId)
-    } else {
-      newSelected.delete(todoId)
-    }
-    setSelectedTodoIds(newSelected)
-  }
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -432,16 +423,6 @@ const Dashboard = () => {
     }
   }
 
-  const getPriorityClass = (priority: number) => {
-    switch (priority) {
-      case 2:
-        return 'priority-high'
-      case 1:
-        return 'priority-medium'
-      default:
-        return 'priority-low'
-    }
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-500 to-purple-600 dark:from-gray-900 dark:to-gray-800 py-8 px-4 sm:px-6 lg:px-8">
@@ -498,16 +479,18 @@ const Dashboard = () => {
             onClear={clearAllFilters}
           />
         </div>
+        </div>
 
         <div className="mb-6">
-        <div className="hide-completed-toggle">
+          <div className="hide-completed-toggle">
           <input
             type="checkbox"
             id="hideCompleted"
             checked={hideCompleted}
             onChange={(e) => setHideCompleted(e.target.checked)}
           />
-          <label htmlFor="hideCompleted">Hide completed tasks</label>
+            <label htmlFor="hideCompleted">Hide completed tasks</label>
+          </div>
         </div>
 
         {showStatistics && statistics && (
@@ -623,7 +606,7 @@ const Dashboard = () => {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Sort By:</label>
             <select
               value={advancedFilters.sortBy || 'createdAt'}
-              onChange={(e) => setAdvancedFilters({ ...advancedFilters, sortBy: e.target.value })}
+              onChange={(e) => setAdvancedFilters({ ...advancedFilters, sortBy: e.target.value as 'title' | 'createdAt' | 'dueDate' | 'priority' })}
               className="input-field"
             >
               <option value="createdAt">Created Date (Newest)</option>
@@ -769,47 +752,9 @@ const Dashboard = () => {
                 : 'No todos match the selected filters.'}
             </div>
           ) : (
-            <DraggableTodoList
-              todos={filteredTodos}
-              onReorder={(reorderedTodos) => {
-                setTodos(reorderedTodos)
-                setFilteredTodos(reorderedTodos)
-              }}
-              renderTodo={(todo) => (
-                <div 
-                  className={`card mb-3 transition-all duration-200 ${todo.isCompleted ? 'opacity-60' : ''} ${todo.isOverdue ? 'border-l-4 border-red-500' : ''} ${todo.isApproachingDue ? 'border-l-4 border-yellow-500' : ''}`}
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <input
-                          type="checkbox"
-                          checked={todo.isCompleted}
-                          onChange={() => handleToggleComplete(todo)}
-                          className="w-5 h-5 text-primary-600 rounded focus:ring-primary-500"
-                        />
-                        <h3 className={`text-lg font-semibold text-gray-900 dark:text-white ${todo.isCompleted ? 'line-through' : ''}`}>
-                          {todo.title}
-                        </h3>
-                        {todo.isOverdue && (
-                          <span className="px-2 py-1 text-xs font-semibold text-white bg-red-500 rounded">Overdue</span>
-                        )}
-                        {todo.isApproachingDue && !todo.isOverdue && (
-                          <span className="px-2 py-1 text-xs font-semibold text-white bg-yellow-500 rounded">Due Soon</span>
-                        )}
-                        <span className={`px-2 py-1 text-xs font-semibold rounded ${
-                          todo.priority === 2 ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
-                          todo.priority === 1 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
-                          'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                        }`}>
-                          {getPriorityLabel(todo.priority)}
-                        </span>
-                      </div>
-                      {todo.description && (
-                        <p className="text-gray-700 dark:text-gray-300 mb-2">{todo.description}</p>
             <>
               {filteredTodos.length > 0 && (
-                <div className="bulk-actions">
+                <div className="bulk-actions mb-4">
                   <input
                     type="checkbox"
                     checked={selectedTodoIds.size > 0 && selectedTodoIds.size === filteredTodos.length}
@@ -844,30 +789,44 @@ const Dashboard = () => {
                   )}
                 </div>
               )}
-              <div className="todos-list">
-                {filteredTodos.map((todo) => (
-                  <div 
-                    key={todo.id} 
-                    className={`todo-item ${todo.isCompleted ? 'completed' : ''} ${todo.isArchived ? 'archived' : ''} ${todo.isOverdue ? 'overdue' : ''} ${todo.isApproachingDue ? 'approaching-due' : ''}`}
-                  >
-                    <div className="todo-content">
-                      <div className="todo-header">
-                        <input
-                          type="checkbox"
-                          checked={selectedTodoIds.has(todo.id)}
-                          onChange={(e) => handleBulkSelect(todo.id, e.target.checked)}
-                          className="todo-item-select"
-                          onClick={(e) => e.stopPropagation()}
-                        />
+              <DraggableTodoList
+                todos={filteredTodos}
+                onReorder={(reorderedTodos) => {
+                  setTodos(reorderedTodos)
+                  setFilteredTodos(reorderedTodos)
+                }}
+                renderTodo={(todo) => (
+                <div 
+                  className={`card mb-3 transition-all duration-200 ${todo.isCompleted ? 'opacity-60' : ''} ${todo.isOverdue ? 'border-l-4 border-red-500' : ''} ${todo.isApproachingDue ? 'border-l-4 border-yellow-500' : ''}`}
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
                         <input
                           type="checkbox"
                           checked={todo.isCompleted}
                           onChange={() => handleToggleComplete(todo)}
-                          className="todo-checkbox"
+                          className="w-5 h-5 text-primary-600 rounded focus:ring-primary-500"
                         />
-                        <h3 className="todo-title">{todo.title}</h3>
-                      {todo.isOverdue && (
-                        <span className="overdue-badge">Overdue</span>
+                        <h3 className={`text-lg font-semibold text-gray-900 dark:text-white ${todo.isCompleted ? 'line-through' : ''}`}>
+                          {todo.title}
+                        </h3>
+                        {todo.isOverdue && (
+                          <span className="px-2 py-1 text-xs font-semibold text-white bg-red-500 rounded">Overdue</span>
+                        )}
+                        {todo.isApproachingDue && !todo.isOverdue && (
+                          <span className="px-2 py-1 text-xs font-semibold text-white bg-yellow-500 rounded">Due Soon</span>
+                        )}
+                        <span className={`px-2 py-1 text-xs font-semibold rounded ${
+                          todo.priority === 2 ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
+                          todo.priority === 1 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
+                          'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                        }`}>
+                          {getPriorityLabel(todo.priority)}
+                        </span>
+                      </div>
+                      {todo.description && (
+                        <p className="text-gray-700 dark:text-gray-300 mb-2">{todo.description}</p>
                       )}
                       {todo.categories && todo.categories.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-2">
@@ -903,14 +862,14 @@ const Dashboard = () => {
                           <span>Reminder: {new Date(todo.reminderDate).toLocaleDateString()}</span>
                         )}
                         <span>Created: {new Date(todo.createdAt).toLocaleDateString()}</span>
+                        {todo.completedAt && (
+                          <span className="text-green-600 dark:text-green-400">
+                            Completed: {new Date(todo.completedAt).toLocaleDateString()}
+                          </span>
+                        )}
                       </div>
-                      {todo.completedAt && (
-                        <span className="todo-date" style={{ color: '#4caf50' }}>
-                          Completed: {new Date(todo.completedAt).toLocaleDateString()}
-                        </span>
-                      )}
                     </div>
-                    <div className="flex gap-2 ml-4">
+                    <div className="flex gap-2">
                       <button 
                         onClick={() => handleEdit(todo)} 
                         className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
@@ -930,6 +889,7 @@ const Dashboard = () => {
             />
             </>
           )}
+        </div>
         </div>
       </div>
     </div>

@@ -14,6 +14,14 @@ public class TodoService : ITodoService
         _context = context;
     }
 
+    private bool SupportsTransactions()
+    {
+        // In-memory database doesn't support transactions
+        // Check if the database provider is in-memory
+        var providerName = _context.Database.ProviderName;
+        return providerName != null && !providerName.Contains("InMemory", StringComparison.OrdinalIgnoreCase);
+    }
+
     public async Task<IEnumerable<TodoDto>> GetTodosByUserIdAsync(int userId, string? sortBy = null, int? priorityFilter = null)
     {
         IQueryable<Todo> query = _context.Todos
@@ -60,8 +68,13 @@ public class TodoService : ITodoService
 
     public async Task<TodoDto> CreateTodoAsync(CreateTodoRequest request, int userId)
     {
-        // Use transaction to ensure data integrity
-        using var transaction = await _context.Database.BeginTransactionAsync();
+        // Use transaction to ensure data integrity (only if supported)
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? transaction = null;
+        if (SupportsTransactions())
+        {
+            transaction = await _context.Database.BeginTransactionAsync();
+        }
+
         try
         {
             var todo = new Todo
@@ -115,7 +128,11 @@ public class TodoService : ITodoService
             }
 
             await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
+            
+            if (transaction != null)
+            {
+                await transaction.CommitAsync();
+            }
 
             // Reload with relationships
             await _context.Entry(todo)
@@ -134,15 +151,30 @@ public class TodoService : ITodoService
         }
         catch
         {
-            await transaction.RollbackAsync();
+            if (transaction != null)
+            {
+                await transaction.RollbackAsync();
+            }
             throw;
+        }
+        finally
+        {
+            if (transaction != null)
+            {
+                await transaction.DisposeAsync();
+            }
         }
     }
 
     public async Task<TodoDto?> UpdateTodoAsync(int todoId, UpdateTodoRequest request, int userId)
     {
-        // Use transaction to ensure data integrity
-        using var transaction = await _context.Database.BeginTransactionAsync();
+        // Use transaction to ensure data integrity (only if supported)
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? transaction = null;
+        if (SupportsTransactions())
+        {
+            transaction = await _context.Database.BeginTransactionAsync();
+        }
+
         try
         {
             var todo = await _context.Todos
@@ -239,7 +271,11 @@ public class TodoService : ITodoService
             todo.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
+            
+            if (transaction != null)
+            {
+                await transaction.CommitAsync();
+            }
 
             // Reload with relationships
             await _context.Entry(todo)
@@ -258,8 +294,18 @@ public class TodoService : ITodoService
         }
         catch
         {
-            await transaction.RollbackAsync();
+            if (transaction != null)
+            {
+                await transaction.RollbackAsync();
+            }
             throw;
+        }
+        finally
+        {
+            if (transaction != null)
+            {
+                await transaction.DisposeAsync();
+            }
         }
     }
 
