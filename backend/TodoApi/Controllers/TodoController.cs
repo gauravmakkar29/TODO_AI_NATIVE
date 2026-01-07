@@ -161,6 +161,23 @@ public class TodoController : ControllerBase
         return Ok(result);
     }
 
+    [HttpPost("reorder")]
+    public async Task<ActionResult> ReorderTodos([FromBody] ReorderTodosRequest request)
+    {
+        var userId = GetUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        if (request.TodoOrders == null || !request.TodoOrders.Any())
+            return BadRequest(new { message = "TodoOrders cannot be empty" });
+
+        var success = await _todoService.ReorderTodosAsync(userId.Value, request);
+        if (!success)
+            return BadRequest(new { message = "Failed to reorder todos. Ensure all todos belong to the user." });
+
+        return Ok(new { message = "Todos reordered successfully" });
+    }
+
     private int? GetUserId()
     {
         var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;

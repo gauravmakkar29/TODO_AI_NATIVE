@@ -31,5 +31,11 @@ export const todoService = {
   async deleteTodo(id: number): Promise<void> {
     await api.delete(`/todo/${id}`)
   },
+
+  async reorderTodos(todoOrders: { todoId: number; displayOrder: number }[]): Promise<void> {
+    await api.post('/todo/reorder', { 
+      todoOrders: todoOrders
+    })
+  },
 }
 

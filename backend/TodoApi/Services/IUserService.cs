@@ -1,7 +1,10 @@
+using TodoApi.Models.DTOs;
+
 namespace TodoApi.Services;
 
 public interface IUserService
 {
-    // Add user-related methods here if needed
+    Task<ThemePreferenceResponse> GetThemePreferenceAsync(int userId);
+    Task<ThemePreferenceResponse> UpdateThemePreferenceAsync(int userId, ThemePreferenceRequest request);
 }
 

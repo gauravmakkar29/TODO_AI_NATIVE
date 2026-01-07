@@ -11,7 +11,10 @@ import CategoryManagement from '../components/CategoryManagement'
 import SearchBar from '../components/SearchBar'
 import AdvancedFilters, { FilterOptions } from '../components/AdvancedFilters'
 import CalendarView from '../components/CalendarView'
-import './Dashboard.css'
+import ThemeToggle from '../components/ThemeToggle'
+import LoadingSpinner from '../components/LoadingSpinner'
+import ErrorMessage from '../components/ErrorMessage'
+import DraggableTodoList from '../components/DraggableTodoList'
 
 const Dashboard = () => {
   const { user, logout } = useAuth()
@@ -62,7 +65,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     loadTodos()
-  }, [sortBy, priorityFilter])
+  }, [advancedFilters.sortBy, priorityFilter])
 
   const loadInitialData = async () => {
     try {
@@ -79,6 +82,7 @@ const Dashboard = () => {
 
   const loadTodos = async () => {
     try {
+      const sortBy = advancedFilters.sortBy === 'createdAt' ? '' : advancedFilters.sortBy || ''
       const data = await todoService.getTodos(sortBy || undefined, priorityFilter || undefined)
       setTodos(data)
     } catch (err: any) {
@@ -355,22 +359,35 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="dashboard-container">
-      <div className="dashboard-card">
-        <div className="dashboard-header">
-          <h1>My Todo List</h1>
-          <button onClick={handleLogout} className="logout-button">
-            Logout
-          </button>
+    <div className="min-h-screen bg-gradient-to-br from-primary-500 to-purple-600 dark:from-gray-900 dark:to-gray-800 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto">
+        <div className="card">
+        <div className="dashboard-header flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">My Todo List</h1>
+          <div className="flex items-center gap-4">
+            <ThemeToggle />
+            <button 
+              onClick={handleLogout} 
+              className="btn-secondary"
+            >
+              Logout
+            </button>
+          </div>
         </div>
 
-        <div className="user-info">
-          <p className="welcome-text">Welcome, {user?.email}!</p>
+        <div className="mb-6">
+          <p className="text-gray-700 dark:text-gray-300">Welcome, {user?.email}!</p>
         </div>
 
-        {error && <div className="error-message">{error}</div>}
+        {error && (
+          <ErrorMessage 
+            message={error} 
+            onDismiss={() => setError(null)}
+            className="mb-4"
+          />
+        )}
 
-        <div className="search-section">
+        <div className="mb-6 space-y-4">
           <SearchBar searchQuery={searchQuery} onSearchChange={setSearchQuery} />
           <AdvancedFilters
             filters={advancedFilters}
@@ -379,10 +396,10 @@ const Dashboard = () => {
           />
         </div>
 
-        <div className="category-section">
+        <div className="mb-6">
           <button
             onClick={() => setShowCategoryManagement(!showCategoryManagement)}
-            className="manage-categories-button"
+            className="btn-secondary mb-4"
           >
             {showCategoryManagement ? 'Hide' : 'Manage'} Categories
           </button>
@@ -391,15 +408,15 @@ const Dashboard = () => {
           )}
         </div>
 
-        <div className="filter-section">
-          <div className="filter-group">
-            <label>Filter by Category:</label>
+        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Filter by Category:</label>
             <select
               value={selectedCategoryFilter || ''}
               onChange={(e) =>
                 setSelectedCategoryFilter(e.target.value ? parseInt(e.target.value) : null)
               }
-              className="filter-select"
+              className="input-field"
             >
               <option value="">All Categories</option>
               {categories.map((cat) => (
@@ -409,14 +426,14 @@ const Dashboard = () => {
               ))}
             </select>
           </div>
-          <div className="filter-group">
-            <label>Filter by Tag:</label>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Filter by Tag:</label>
             <select
               value={selectedTagFilter || ''}
               onChange={(e) =>
                 setSelectedTagFilter(e.target.value ? parseInt(e.target.value) : null)
               }
-              className="filter-select"
+              className="input-field"
             >
               <option value="">All Tags</option>
               {tags.map((tag) => (
@@ -426,14 +443,14 @@ const Dashboard = () => {
               ))}
             </select>
           </div>
-          <div className="filter-group">
-            <label>Filter by Priority:</label>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Filter by Priority:</label>
             <select
               value={priorityFilter !== null ? priorityFilter.toString() : ''}
               onChange={(e) =>
                 setPriorityFilter(e.target.value ? parseInt(e.target.value) : null)
               }
-              className="filter-select"
+              className="input-field"
             >
               <option value="">All Priorities</option>
               <option value="2">High</option>
@@ -441,41 +458,43 @@ const Dashboard = () => {
               <option value="0">Low</option>
             </select>
           </div>
-          <div className="filter-group">
-            <label>Sort By:</label>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Sort By:</label>
             <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="filter-select"
+              value={advancedFilters.sortBy || 'createdAt'}
+              onChange={(e) => setAdvancedFilters({ ...advancedFilters, sortBy: e.target.value })}
+              className="input-field"
             >
-              <option value="">Created Date (Newest)</option>
+              <option value="createdAt">Created Date (Newest)</option>
               <option value="priority">Priority (High to Low)</option>
               <option value="priority_asc">Priority (Low to High)</option>
               <option value="duedate">Due Date (Earliest)</option>
               <option value="duedate_desc">Due Date (Latest)</option>
             </select>
           </div>
-          {(selectedCategoryFilter !== null || selectedTagFilter !== null || priorityFilter !== null) && (
+        </div>
+        {(selectedCategoryFilter !== null || selectedTagFilter !== null || priorityFilter !== null) && (
+          <div className="mb-6">
             <button
               onClick={() => {
                 setSelectedCategoryFilter(null)
                 setSelectedTagFilter(null)
                 setPriorityFilter(null)
               }}
-              className="clear-filters-button"
+              className="btn-secondary"
             >
               Clear Category/Tag Filters
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
-        <div className="todos-section">
-          <div className="todos-header">
-            <h2>Your Todos ({filteredTodos.length})</h2>
-            <div className="todos-header-actions">
+        <div className="mt-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Your Todos ({filteredTodos.length})</h2>
+            <div className="flex gap-2">
               <button
                 onClick={() => setShowCalendarView(!showCalendarView)}
-                className="calendar-view-button"
+                className="btn-secondary"
               >
                 {showCalendarView ? 'List View' : 'Calendar View'}
               </button>
@@ -484,7 +503,7 @@ const Dashboard = () => {
                   cancelForm()
                   setShowAddForm(!showAddForm)
                 }}
-                className="add-todo-button"
+                className="btn-primary"
               >
                 {showAddForm ? 'Cancel' : '+ Add Todo'}
               </button>
@@ -492,9 +511,9 @@ const Dashboard = () => {
           </div>
 
           {showAddForm && (
-            <form onSubmit={handleSubmit} className="todo-form">
-              <div className="form-group">
-                <label htmlFor="title">Title *</label>
+            <form onSubmit={handleSubmit} className="card mb-6 animate-slide-down">
+              <div className="mb-4">
+                <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Title *</label>
                 <input
                   type="text"
                   id="title"
@@ -502,16 +521,18 @@ const Dashboard = () => {
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                   required
                   placeholder="Enter todo title"
+                  className="input-field"
                 />
               </div>
-              <div className="form-group">
-                <label htmlFor="description">Description</label>
+              <div className="mb-4">
+                <label htmlFor="description" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
                 <textarea
                   id="description"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   placeholder="Enter todo description"
                   rows={3}
+                  className="input-field"
                 />
               </div>
               {categories.length > 0 && (
@@ -527,45 +548,46 @@ const Dashboard = () => {
                 onTagsChange={setSelectedTags}
                 onCreateTag={handleCreateTag}
               />
-              <div className="form-row">
-                <div className="form-group">
-                  <label htmlFor="dueDate">Due Date</label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label htmlFor="dueDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Due Date</label>
                   <input
                     type="date"
                     id="dueDate"
                     value={formData.dueDate}
                     onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
+                    className="input-field"
                   />
                 </div>
-                <div className="form-group">
-                  <label htmlFor="reminderDate">Reminder Date</label>
+                <div>
+                  <label htmlFor="reminderDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Reminder Date</label>
                   <input
                     type="date"
                     id="reminderDate"
                     value={formData.reminderDate}
                     onChange={(e) => setFormData({ ...formData, reminderDate: e.target.value })}
+                    className="input-field"
                   />
                 </div>
               </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label htmlFor="priority">Priority</label>
-                  <select
-                    id="priority"
-                    value={formData.priority}
-                    onChange={(e) => setFormData({ ...formData, priority: parseInt(e.target.value) })}
-                  >
-                    <option value={0}>Low</option>
-                    <option value={1}>Medium</option>
-                    <option value={2}>High</option>
-                  </select>
-                </div>
+              <div className="mb-4">
+                <label htmlFor="priority" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Priority</label>
+                <select
+                  id="priority"
+                  value={formData.priority}
+                  onChange={(e) => setFormData({ ...formData, priority: parseInt(e.target.value) })}
+                  className="input-field"
+                >
+                  <option value={0}>Low</option>
+                  <option value={1}>Medium</option>
+                  <option value={2}>High</option>
+                </select>
               </div>
-              <div className="form-actions">
-                <button type="submit" className="submit-button">
+              <div className="flex gap-2">
+                <button type="submit" className="btn-primary">
                   {editingTodo ? 'Update Todo' : 'Add Todo'}
                 </button>
-                <button type="button" onClick={cancelForm} className="cancel-button">
+                <button type="button" onClick={cancelForm} className="btn-secondary">
                   Cancel
                 </button>
               </div>
@@ -573,97 +595,112 @@ const Dashboard = () => {
           )}
 
           {loading ? (
-            <div className="loading">Loading todos...</div>
+            <LoadingSpinner size="lg" className="py-12" />
           ) : showCalendarView ? (
             <CalendarView 
               todos={filteredTodos.filter(t => t.dueDate)} 
               onTodoClick={handleEdit}
             />
           ) : filteredTodos.length === 0 ? (
-            <div className="no-todos">
+            <div className="text-center py-12 text-gray-600 dark:text-gray-400">
               {todos.length === 0
                 ? 'No todos yet. Create your first todo!'
                 : 'No todos match the selected filters.'}
             </div>
           ) : (
-            <div className="todos-list">
-              {filteredTodos.map((todo) => (
+            <DraggableTodoList
+              todos={filteredTodos}
+              onReorder={(reorderedTodos) => {
+                setTodos(reorderedTodos)
+                setFilteredTodos(reorderedTodos)
+              }}
+              renderTodo={(todo) => (
                 <div 
-                  key={todo.id} 
-                  className={`todo-item ${todo.isCompleted ? 'completed' : ''} ${todo.isOverdue ? 'overdue' : ''} ${todo.isApproachingDue ? 'approaching-due' : ''}`}
+                  className={`card mb-3 transition-all duration-200 ${todo.isCompleted ? 'opacity-60' : ''} ${todo.isOverdue ? 'border-l-4 border-red-500' : ''} ${todo.isApproachingDue ? 'border-l-4 border-yellow-500' : ''}`}
                 >
-                  <div className="todo-content">
-                    <div className="todo-header">
-                      <input
-                        type="checkbox"
-                        checked={todo.isCompleted}
-                        onChange={() => handleToggleComplete(todo)}
-                        className="todo-checkbox"
-                      />
-                      <h3 className="todo-title">{todo.title}</h3>
-                      {todo.isOverdue && (
-                        <span className="overdue-badge">Overdue</span>
-                      )}
-                      {todo.isApproachingDue && !todo.isOverdue && (
-                        <span className="approaching-badge">Due Soon</span>
-                      )}
-                      <span className={`priority-badge ${getPriorityClass(todo.priority)}`}>
-                        {getPriorityLabel(todo.priority)}
-                      </span>
-                    </div>
-                    {todo.description && <p className="todo-description">{todo.description}</p>}
-                    {todo.categories && todo.categories.length > 0 && (
-                      <div className="todo-categories">
-                        {todo.categories.map((category) => (
-                          <span
-                            key={category.id}
-                            className="todo-category-badge"
-                            style={{
-                              backgroundColor: category.color,
-                              color: '#fff',
-                            }}
-                          >
-                            {category.name}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    {todo.tags && todo.tags.length > 0 && (
-                      <div className="todo-tags">
-                        {todo.tags.map((tag) => (
-                          <span key={tag.id} className="todo-tag-badge">
-                            #{tag.name}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <div className="todo-meta">
-                      {todo.dueDate && (
-                        <span className={`todo-due-date ${todo.isOverdue ? 'overdue-text' : ''} ${todo.isApproachingDue ? 'approaching-text' : ''}`}>
-                          Due: {new Date(todo.dueDate).toLocaleDateString()}
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <input
+                          type="checkbox"
+                          checked={todo.isCompleted}
+                          onChange={() => handleToggleComplete(todo)}
+                          className="w-5 h-5 text-primary-600 rounded focus:ring-primary-500"
+                        />
+                        <h3 className={`text-lg font-semibold text-gray-900 dark:text-white ${todo.isCompleted ? 'line-through' : ''}`}>
+                          {todo.title}
+                        </h3>
+                        {todo.isOverdue && (
+                          <span className="px-2 py-1 text-xs font-semibold text-white bg-red-500 rounded">Overdue</span>
+                        )}
+                        {todo.isApproachingDue && !todo.isOverdue && (
+                          <span className="px-2 py-1 text-xs font-semibold text-white bg-yellow-500 rounded">Due Soon</span>
+                        )}
+                        <span className={`px-2 py-1 text-xs font-semibold rounded ${
+                          todo.priority === 2 ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
+                          todo.priority === 1 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
+                          'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                        }`}>
+                          {getPriorityLabel(todo.priority)}
                         </span>
+                      </div>
+                      {todo.description && (
+                        <p className="text-gray-700 dark:text-gray-300 mb-2">{todo.description}</p>
                       )}
-                      {todo.reminderDate && (
-                        <span className="todo-reminder-date">
-                          Reminder: {new Date(todo.reminderDate).toLocaleDateString()}
-                        </span>
+                      {todo.categories && todo.categories.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {todo.categories.map((category) => (
+                            <span
+                              key={category.id}
+                              className="px-2 py-1 text-xs font-medium text-white rounded"
+                              style={{
+                                backgroundColor: category.color,
+                              }}
+                            >
+                              {category.name}
+                            </span>
+                          ))}
+                        </div>
                       )}
-                      <span className="todo-date">
-                        Created: {new Date(todo.createdAt).toLocaleDateString()}
-                      </span>
+                      {todo.tags && todo.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {todo.tags.map((tag) => (
+                            <span key={tag.id} className="px-2 py-1 text-xs font-medium bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded">
+                              #{tag.name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-400">
+                        {todo.dueDate && (
+                          <span className={todo.isOverdue ? 'text-red-600 dark:text-red-400 font-semibold' : todo.isApproachingDue ? 'text-yellow-600 dark:text-yellow-400 font-semibold' : ''}>
+                            Due: {new Date(todo.dueDate).toLocaleDateString()}
+                          </span>
+                        )}
+                        {todo.reminderDate && (
+                          <span>Reminder: {new Date(todo.reminderDate).toLocaleDateString()}</span>
+                        )}
+                        <span>Created: {new Date(todo.createdAt).toLocaleDateString()}</span>
+                      </div>
                     </div>
-                  </div>
-                  <div className="todo-actions">
-                    <button onClick={() => handleEdit(todo)} className="edit-button">
-                      Edit
-                    </button>
-                    <button onClick={() => handleDelete(todo.id)} className="delete-button">
-                      Delete
-                    </button>
+                    <div className="flex gap-2 ml-4">
+                      <button 
+                        onClick={() => handleEdit(todo)} 
+                        className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                      >
+                        Edit
+                      </button>
+                      <button 
+                        onClick={() => handleDelete(todo.id)} 
+                        className="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 </div>
-              ))}
-            </div>
+              )}
+            />
           )}
         </div>
       </div>

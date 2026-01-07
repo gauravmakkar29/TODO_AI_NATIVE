@@ -16,7 +16,7 @@ public class TodoService : ITodoService
 
     public async Task<IEnumerable<TodoDto>> GetTodosByUserIdAsync(int userId, string? sortBy = null, int? priorityFilter = null)
     {
-        var query = _context.Todos
+        IQueryable<Todo> query = _context.Todos
             .Where(t => t.UserId == userId)
             .Include(t => t.TodoCategories)
                 .ThenInclude(tc => tc.Category)
@@ -29,17 +29,17 @@ public class TodoService : ITodoService
             query = query.Where(t => t.Priority == priorityFilter.Value);
         }
 
-        // Apply sorting
-        query = sortBy?.ToLower() switch
+        // Apply sorting - prioritize DisplayOrder for drag-and-drop
+        IOrderedQueryable<Todo> orderedQuery = sortBy?.ToLower() switch
         {
-            "priority" => query.OrderByDescending(t => t.Priority).ThenByDescending(t => t.CreatedAt),
-            "priority_asc" => query.OrderBy(t => t.Priority).ThenByDescending(t => t.CreatedAt),
-            "duedate" => query.OrderBy(t => t.DueDate.HasValue).ThenBy(t => t.DueDate).ThenByDescending(t => t.CreatedAt),
-            "duedate_desc" => query.OrderByDescending(t => t.DueDate.HasValue).ThenByDescending(t => t.DueDate).ThenByDescending(t => t.CreatedAt),
-            _ => query.OrderByDescending(t => t.CreatedAt)
+            "priority" => query.OrderBy(t => t.DisplayOrder).ThenByDescending(t => t.Priority).ThenByDescending(t => t.CreatedAt),
+            "priority_asc" => query.OrderBy(t => t.DisplayOrder).ThenBy(t => t.Priority).ThenByDescending(t => t.CreatedAt),
+            "duedate" => query.OrderBy(t => t.DisplayOrder).ThenBy(t => t.DueDate.HasValue).ThenBy(t => t.DueDate ?? DateTime.MaxValue).ThenByDescending(t => t.CreatedAt),
+            "duedate_desc" => query.OrderBy(t => t.DisplayOrder).ThenByDescending(t => t.DueDate.HasValue).ThenByDescending(t => t.DueDate ?? DateTime.MinValue).ThenByDescending(t => t.CreatedAt),
+            _ => query.OrderBy(t => t.DisplayOrder).ThenByDescending(t => t.CreatedAt)
         };
 
-        var todos = await query.ToListAsync();
+        var todos = await orderedQuery.ToListAsync();
         return todos.Select(t => MapToDto(t));
     }
 
@@ -60,6 +60,13 @@ public class TodoService : ITodoService
 
     public async Task<TodoDto> CreateTodoAsync(CreateTodoRequest request, int userId)
     {
+        // Get the maximum DisplayOrder for this user to set the new todo's order
+        var maxOrder = await _context.Todos
+            .Where(t => t.UserId == userId)
+            .Select(t => (int?)t.DisplayOrder)
+            .DefaultIfEmpty(-1)
+            .MaxAsync() ?? -1;
+
         var todo = new Todo
         {
             UserId = userId,
@@ -68,6 +75,7 @@ public class TodoService : ITodoService
             DueDate = request.DueDate,
             ReminderDate = request.ReminderDate,
             Priority = request.Priority,
+            DisplayOrder = maxOrder + 1,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -391,6 +399,33 @@ public class TodoService : ITodoService
             PageNumber = pageNumber,
             PageSize = pageSize
         };
+    }
+
+    public async Task<bool> ReorderTodosAsync(int userId, ReorderTodosRequest request)
+    {
+        if (request.TodoOrders == null || !request.TodoOrders.Any())
+            return false;
+
+        var todoIds = request.TodoOrders.Select(to => to.TodoId).ToList();
+        var todos = await _context.Todos
+            .Where(t => t.UserId == userId && todoIds.Contains(t.Id))
+            .ToListAsync();
+
+        if (todos.Count != request.TodoOrders.Count)
+            return false; // Not all todos belong to the user
+
+        foreach (var orderItem in request.TodoOrders)
+        {
+            var todo = todos.FirstOrDefault(t => t.Id == orderItem.TodoId);
+            if (todo != null)
+            {
+                todo.DisplayOrder = orderItem.DisplayOrder;
+                todo.UpdatedAt = DateTime.UtcNow;
+            }
+        }
+
+        await _context.SaveChangesAsync();
+        return true;
     }
 
     private TodoDto MapToDto(Todo todo)

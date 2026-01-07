@@ -8,6 +8,7 @@ public class User
     public string? FirstName { get; set; }
     public string? LastName { get; set; }
     public bool EmailVerified { get; set; } = false;
+    public string ThemePreference { get; set; } = "light"; // "light" or "dark"
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

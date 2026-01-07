@@ -12,6 +12,7 @@ public class Todo
     public DateTime? DueDate { get; set; }
     public DateTime? ReminderDate { get; set; }
     public int Priority { get; set; } = 0; // 0 = Low, 1 = Medium, 2 = High
+    public int DisplayOrder { get; set; } = 0; // For drag-and-drop reordering
 
     // Navigation properties
     public User? User { get; set; }

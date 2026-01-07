@@ -30,6 +30,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Email).IsRequired().HasMaxLength(255);
             entity.Property(e => e.PasswordHash).IsRequired();
             entity.Property(e => e.CreatedAt).IsRequired();
+            entity.Property(e => e.ThemePreference).HasMaxLength(10);
         });
 
         modelBuilder.Entity<RefreshToken>(entity =>
