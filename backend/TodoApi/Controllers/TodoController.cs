@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
+using TodoApi.Models;
 using TodoApi.Models.DTOs;
 using TodoApi.Services;
 
@@ -122,7 +123,10 @@ public class TodoController : ControllerBase
     public async Task<ActionResult<SearchFilterResponse>> SearchAndFilterTodosGet(
         [FromQuery] string? searchQuery,
         [FromQuery] bool? isCompleted,
+        [FromQuery] bool? isArchived,
+        [FromQuery] int? status,
         [FromQuery] bool? isOverdue,
+        [FromQuery] bool? hideCompleted,
         [FromQuery] int? priority,
         [FromQuery] List<int>? categoryIds,
         [FromQuery] List<int>? tagIds,
@@ -143,7 +147,10 @@ public class TodoController : ControllerBase
         {
             SearchQuery = searchQuery,
             IsCompleted = isCompleted,
+            IsArchived = isArchived,
+            Status = status.HasValue ? (Models.TodoStatus?)status.Value : null,
             IsOverdue = isOverdue,
+            HideCompleted = hideCompleted,
             Priority = priority,
             CategoryIds = categoryIds,
             TagIds = tagIds,
@@ -176,6 +183,42 @@ public class TodoController : ControllerBase
             return BadRequest(new { message = "Failed to reorder todos. Ensure all todos belong to the user." });
 
         return Ok(new { message = "Todos reordered successfully" });
+    }
+
+    [HttpPost("bulk-complete")]
+    public async Task<ActionResult> BulkMarkComplete([FromBody] BulkTodoRequest request)
+    {
+        var userId = GetUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        if (request.TodoIds == null || !request.TodoIds.Any())
+            return BadRequest(new { message = "TodoIds are required" });
+
+        var count = await _todoService.BulkMarkCompleteAsync(userId.Value, request);
+        return Ok(new { message = $"{count} todos updated successfully", count });
+    }
+
+    [HttpGet("statistics")]
+    public async Task<ActionResult<TodoStatisticsDto>> GetStatistics()
+    {
+        var userId = GetUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var statistics = await _todoService.GetTodoStatisticsAsync(userId.Value);
+        return Ok(statistics);
+    }
+
+    [HttpPost("archive-old")]
+    public async Task<ActionResult> ArchiveOldCompletedTodos([FromQuery] int daysOld = 30)
+    {
+        var userId = GetUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var count = await _todoService.ArchiveOldCompletedTodosAsync(userId.Value, daysOld);
+        return Ok(new { message = $"{count} todos archived successfully", count });
     }
 
     private int? GetUserId()

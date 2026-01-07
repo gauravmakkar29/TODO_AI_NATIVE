@@ -1,10 +1,15 @@
+using TodoApi.Models;
+
 namespace TodoApi.Models.DTOs;
 
 public class SearchFilterRequest
 {
     public string? SearchQuery { get; set; }
     public bool? IsCompleted { get; set; }
+    public bool? IsArchived { get; set; }
+    public TodoStatus? Status { get; set; }
     public bool? IsOverdue { get; set; } // Special flag for overdue todos
+    public bool? HideCompleted { get; set; } // Hide completed tasks from main view
     public int? Priority { get; set; }
     public List<int>? CategoryIds { get; set; }
     public List<int>? TagIds { get; set; }

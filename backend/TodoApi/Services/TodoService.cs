@@ -17,7 +17,7 @@ public class TodoService : ITodoService
     public async Task<IEnumerable<TodoDto>> GetTodosByUserIdAsync(int userId, string? sortBy = null, int? priorityFilter = null)
     {
         IQueryable<Todo> query = _context.Todos
-            .Where(t => t.UserId == userId)
+            .Where(t => t.UserId == userId && !t.IsArchived) // Exclude archived by default
             .Include(t => t.TodoCategories)
                 .ThenInclude(tc => tc.Category)
             .Include(t => t.TodoTags)
@@ -160,7 +160,22 @@ public class TodoService : ITodoService
                 todo.Description = request.Description;
 
             if (request.IsCompleted.HasValue)
+            {
+                var wasCompleted = todo.IsCompleted;
                 todo.IsCompleted = request.IsCompleted.Value;
+                
+                // Update status and completion date
+                if (request.IsCompleted.Value && !wasCompleted)
+                {
+                    todo.Status = Models.TodoStatus.Completed;
+                    todo.CompletedAt = DateTime.UtcNow;
+                }
+                else if (!request.IsCompleted.Value && wasCompleted)
+                {
+                    todo.Status = Models.TodoStatus.Pending;
+                    todo.CompletedAt = null;
+                }
+            }
 
             if (request.DueDate.HasValue)
                 todo.DueDate = request.DueDate;
@@ -319,20 +334,41 @@ public class TodoService : ITodoService
             query = query.Where(t => !t.IsCompleted && t.DueDate != null && t.DueDate.Value.Date < now);
         }
 
+        // Archive filter
+        if (request.IsArchived.HasValue)
+        {
+            query = query.Where(t => t.IsArchived == request.IsArchived.Value);
+        }
+        else if (request.HideCompleted != true)
+        {
+            // By default, exclude archived unless explicitly requested
+            query = query.Where(t => !t.IsArchived);
+        }
+
         // Status filter
-        if (request.IsCompleted.HasValue)
+        if (request.Status.HasValue)
+        {
+            query = query.Where(t => t.Status == request.Status.Value);
+        }
+        else if (request.IsCompleted.HasValue)
         {
             if (request.IsCompleted.Value)
             {
                 // Completed
-                query = query.Where(t => t.IsCompleted);
+                query = query.Where(t => t.IsCompleted && t.Status == Models.TodoStatus.Completed);
             }
             else if (request.IsOverdue != true) // Only filter pending if not filtering for overdue
             {
                 // Pending (not completed and not overdue)
                 var now = DateTime.UtcNow.Date;
-                query = query.Where(t => !t.IsCompleted && (t.DueDate == null || t.DueDate.Value.Date >= now));
+                query = query.Where(t => !t.IsCompleted && t.Status == Models.TodoStatus.Pending && (t.DueDate == null || t.DueDate.Value.Date >= now));
             }
+        }
+
+        // Hide completed filter
+        if (request.HideCompleted == true)
+        {
+            query = query.Where(t => !t.IsCompleted || t.Status != Models.TodoStatus.Completed);
         }
 
         // Priority filter
@@ -442,6 +478,97 @@ public class TodoService : ITodoService
         return true;
     }
 
+    public async Task<int> BulkMarkCompleteAsync(int userId, BulkTodoRequest request)
+    {
+        var todos = await _context.Todos
+            .Where(t => t.UserId == userId && request.TodoIds.Contains(t.Id))
+            .ToListAsync();
+
+        var now = DateTime.UtcNow;
+        foreach (var todo in todos)
+        {
+            todo.IsCompleted = request.IsCompleted;
+            if (request.IsCompleted)
+            {
+                todo.Status = Models.TodoStatus.Completed;
+                todo.CompletedAt = now;
+            }
+            else
+            {
+                todo.Status = Models.TodoStatus.Pending;
+                todo.CompletedAt = null;
+            }
+            todo.UpdatedAt = now;
+        }
+
+        await _context.SaveChangesAsync();
+        return todos.Count;
+    }
+
+    public async Task<TodoStatisticsDto> GetTodoStatisticsAsync(int userId)
+    {
+        var todos = await _context.Todos
+            .Where(t => t.UserId == userId)
+            .ToListAsync();
+
+        var now = DateTime.UtcNow;
+        var totalTodos = todos.Count;
+        var completedTodos = todos.Count(t => t.IsCompleted && t.Status == Models.TodoStatus.Completed);
+        var pendingTodos = todos.Count(t => !t.IsCompleted && t.Status == Models.TodoStatus.Pending);
+        var archivedTodos = todos.Count(t => t.IsArchived || t.Status == Models.TodoStatus.Archived);
+        var overdueTodos = todos.Count(t => !t.IsCompleted && t.DueDate.HasValue && t.DueDate.Value < now);
+        var highPriorityTodos = todos.Count(t => !t.IsCompleted && t.Priority == 2);
+        var mediumPriorityTodos = todos.Count(t => !t.IsCompleted && t.Priority == 1);
+        var lowPriorityTodos = todos.Count(t => !t.IsCompleted && t.Priority == 0);
+
+        var completionRate = totalTodos > 0 ? (double)completedTodos / totalTodos * 100 : 0;
+
+        // Completion by date (last 30 days)
+        var completionByDate = todos
+            .Where(t => t.CompletedAt.HasValue && t.CompletedAt.Value >= now.AddDays(-30))
+            .GroupBy(t => t.CompletedAt!.Value.Date)
+            .ToDictionary(g => g.Key.ToString("yyyy-MM-dd"), g => g.Count());
+
+        return new TodoStatisticsDto
+        {
+            TotalTodos = totalTodos,
+            CompletedTodos = completedTodos,
+            PendingTodos = pendingTodos,
+            ArchivedTodos = archivedTodos,
+            CompletionRate = Math.Round(completionRate, 2),
+            OverdueTodos = overdueTodos,
+            HighPriorityTodos = highPriorityTodos,
+            MediumPriorityTodos = mediumPriorityTodos,
+            LowPriorityTodos = lowPriorityTodos,
+            CompletionByDate = completionByDate
+        };
+    }
+
+    public async Task<int> ArchiveOldCompletedTodosAsync(int userId, int daysOld = 30)
+    {
+        var cutoffDate = DateTime.UtcNow.AddDays(-daysOld);
+        var todos = await _context.Todos
+            .Where(t => t.UserId == userId 
+                && t.IsCompleted 
+                && t.Status == Models.TodoStatus.Completed
+                && t.CompletedAt.HasValue
+                && t.CompletedAt.Value < cutoffDate
+                && !t.IsArchived)
+            .ToListAsync();
+
+        var now = DateTime.UtcNow;
+        foreach (var todo in todos)
+        {
+            todo.IsArchived = true;
+            todo.Status = Models.TodoStatus.Archived;
+            todo.ArchivedAt = now;
+            todo.UpdatedAt = now;
+        }
+
+        await _context.SaveChangesAsync();
+        return todos.Count;
+    }
+
     private TodoDto MapToDto(Todo todo)
     {
         var now = DateTime.UtcNow;
@@ -455,8 +582,12 @@ public class TodoService : ITodoService
             Title = todo.Title,
             Description = todo.Description,
             IsCompleted = todo.IsCompleted,
+            Status = todo.Status,
+            IsArchived = todo.IsArchived,
             CreatedAt = todo.CreatedAt,
             UpdatedAt = todo.UpdatedAt,
+            CompletedAt = todo.CompletedAt,
+            ArchivedAt = todo.ArchivedAt,
             DueDate = todo.DueDate,
             ReminderDate = todo.ReminderDate,
             Priority = todo.Priority,

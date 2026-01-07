@@ -25,16 +25,7 @@ const AdvancedFilters = ({ filters, onFiltersChange, onClear }: AdvancedFiltersP
     onFiltersChange({ ...filters, [key]: value })
   }
 
-  const hasActiveFilters = () => {
-    return (
-      filters.priority !== null &&
-      filters.priority !== undefined &&
-      filters.isCompleted !== null &&
-      filters.isCompleted !== undefined &&
-      filters.dueDateFrom !== undefined &&
-      filters.dueDateTo !== undefined
-    )
-  }
+  // Removed unused hasActiveFilters function
 
   return (
     <div className="advanced-filters">

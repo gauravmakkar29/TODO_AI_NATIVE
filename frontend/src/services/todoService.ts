@@ -1,5 +1,5 @@
 import { api } from './authService'
-import { Todo, CreateTodoRequest, UpdateTodoRequest } from '../types/todo'
+import { Todo, CreateTodoRequest, UpdateTodoRequest, BulkTodoRequest, TodoStatistics } from '../types/todo'
 
 export const todoService = {
   async getTodos(sortBy?: string, priorityFilter?: number): Promise<Todo[]> {
@@ -36,6 +36,21 @@ export const todoService = {
     await api.post('/todo/reorder', { 
       todoOrders: todoOrders
     })
+  },
+
+  async bulkMarkComplete(request: BulkTodoRequest): Promise<{ message: string; count: number }> {
+    const response = await api.post<{ message: string; count: number }>('/todo/bulk-complete', request)
+    return response.data
+  },
+
+  async getStatistics(): Promise<TodoStatistics> {
+    const response = await api.get<TodoStatistics>('/todo/statistics')
+    return response.data
+  },
+
+  async archiveOldCompletedTodos(daysOld: number = 30): Promise<{ message: string; count: number }> {
+    const response = await api.post<{ message: string; count: number }>(`/todo/archive-old?daysOld=${daysOld}`)
+    return response.data
   },
 }
 

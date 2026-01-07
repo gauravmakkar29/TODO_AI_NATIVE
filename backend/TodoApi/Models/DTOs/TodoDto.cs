@@ -1,3 +1,5 @@
+using TodoApi.Models;
+
 namespace TodoApi.Models.DTOs;
 
 public class TodoDto
@@ -6,8 +8,12 @@ public class TodoDto
     public string Title { get; set; } = string.Empty;
     public string? Description { get; set; }
     public bool IsCompleted { get; set; }
+    public TodoStatus Status { get; set; }
+    public bool IsArchived { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public DateTime? ArchivedAt { get; set; }
     public DateTime? DueDate { get; set; }
     public DateTime? ReminderDate { get; set; }
     public int Priority { get; set; }

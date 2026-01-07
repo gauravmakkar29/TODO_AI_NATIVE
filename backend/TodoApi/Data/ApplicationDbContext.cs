@@ -61,9 +61,12 @@ public class ApplicationDbContext : DbContext
             // Performance indexes
             entity.HasIndex(e => e.UserId);
             entity.HasIndex(e => new { e.UserId, e.IsCompleted });
+            entity.HasIndex(e => new { e.UserId, e.Status });
+            entity.HasIndex(e => new { e.UserId, e.IsArchived });
             entity.HasIndex(e => new { e.UserId, e.Priority });
             entity.HasIndex(e => new { e.UserId, e.DueDate });
             entity.HasIndex(e => new { e.UserId, e.CreatedAt });
+            entity.HasIndex(e => new { e.UserId, e.CompletedAt });
         });
 
         modelBuilder.Entity<Category>(entity =>

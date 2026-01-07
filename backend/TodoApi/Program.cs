@@ -16,8 +16,6 @@ var builder = WebApplication.CreateBuilder(args);
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration)
     .Enrich.FromLogContext()
-    .Enrich.WithMachineName()
-    .Enrich.WithThreadId()
     .WriteTo.Console()
     .WriteTo.File("logs/todoapi-.log", rollingInterval: RollingInterval.Day, retainedFileCountLimit: 30)
     .CreateLogger();
@@ -79,7 +77,7 @@ else
                 errorCodesToAdd: null);
         }));
     Log.Information("Using PostgreSQL database: {ConnectionString}", 
-        connectionString?.Substring(0, Math.Min(20, connectionString.Length ?? 0)) + "...");
+        connectionString != null ? connectionString.Substring(0, Math.Min(20, connectionString.Length)) + "..." : "null");
 }
 
 // JWT Authentication

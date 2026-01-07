@@ -13,6 +13,9 @@ public interface ITodoService
     Task<IEnumerable<TodoDto>> GetTodosByTagAsync(int userId, int tagId);
     Task<SearchFilterResponse> SearchAndFilterTodosAsync(int userId, SearchFilterRequest request);
     Task<bool> ReorderTodosAsync(int userId, ReorderTodosRequest request);
+    Task<int> BulkMarkCompleteAsync(int userId, BulkTodoRequest request);
+    Task<TodoStatisticsDto> GetTodoStatisticsAsync(int userId);
+    Task<int> ArchiveOldCompletedTodosAsync(int userId, int daysOld = 30);
 }
 
 

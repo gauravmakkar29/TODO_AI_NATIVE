@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { todoService } from '../services/todoService'
 import { categoryService, tagService } from '../services/categoryService'
-import { Todo, CreateTodoRequest, UpdateTodoRequest } from '../types/todo'
+import { Todo, CreateTodoRequest, UpdateTodoRequest, TodoStatistics } from '../types/todo'
 import { Category, Tag } from '../types/category'
 import CategorySelector from '../components/CategorySelector'
 import TagInput from '../components/TagInput'
@@ -44,6 +44,11 @@ const Dashboard = () => {
  
   const [priorityFilter, setPriorityFilter] = useState<number | null>(null)
   const [showCalendarView, setShowCalendarView] = useState(false)
+  const [hideCompleted, setHideCompleted] = useState(false)
+  const [selectedTodoIds, setSelectedTodoIds] = useState<Set<number>>(new Set())
+  const [statistics, setStatistics] = useState<TodoStatistics | null>(null)
+  const [showStatistics, setShowStatistics] = useState(false)
+  const [lastCompletedTodo, setLastCompletedTodo] = useState<Todo | null>(null)
   const [formData, setFormData] = useState<CreateTodoRequest>({
     title: '',
     description: '',
@@ -61,22 +66,35 @@ const Dashboard = () => {
 
   useEffect(() => {
     applyFilters()
-  }, [todos, selectedCategoryFilter, selectedTagFilter, searchQuery, advancedFilters])
+  }, [todos, selectedCategoryFilter, selectedTagFilter, searchQuery, advancedFilters, hideCompleted])
 
   useEffect(() => {
     loadTodos()
   }, [advancedFilters.sortBy, advancedFilters.sortOrder, priorityFilter])
 
+  useEffect(() => {
+    loadStatistics()
+  }, [todos])
+
   const loadInitialData = async () => {
     try {
       setLoading(true)
       setError(null)
-      await Promise.all([loadTodos(), loadCategories(), loadTags()])
+      await Promise.all([loadTodos(), loadCategories(), loadTags(), loadStatistics()])
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to load data')
       console.error('Error loading data:', err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadStatistics = async () => {
+    try {
+      const stats = await todoService.getStatistics()
+      setStatistics(stats)
+    } catch (err: any) {
+      console.error('Error loading statistics:', err)
     }
   }
 
@@ -140,6 +158,11 @@ const Dashboard = () => {
       filtered = filtered.filter(
         (todo) => todo.tags?.some((tag) => tag.id === selectedTagFilter)
       )
+    }
+
+    // Hide completed filter
+    if (hideCompleted) {
+      filtered = filtered.filter((todo) => !todo.isCompleted)
     }
 
     // Advanced filters
@@ -300,11 +323,71 @@ const Dashboard = () => {
   const handleToggleComplete = async (todo: Todo) => {
     try {
       setError(null)
+      const wasCompleted = todo.isCompleted
       await todoService.updateTodo(todo.id, { isCompleted: !todo.isCompleted })
+      
+      // Store for undo functionality
+      if (!wasCompleted) {
+        setLastCompletedTodo(todo)
+      }
+      
       await loadTodos()
+      await loadStatistics()
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to update todo')
       console.error('Error updating todo:', err)
+    }
+  }
+
+  const handleUndoComplete = async () => {
+    if (!lastCompletedTodo) return
+    
+    try {
+      setError(null)
+      await todoService.updateTodo(lastCompletedTodo.id, { isCompleted: false })
+      setLastCompletedTodo(null)
+      await loadTodos()
+      await loadStatistics()
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to undo completion')
+      console.error('Error undoing completion:', err)
+    }
+  }
+
+  const handleBulkSelect = (todoId: number, checked: boolean) => {
+    const newSelected = new Set(selectedTodoIds)
+    if (checked) {
+      newSelected.add(todoId)
+    } else {
+      newSelected.delete(todoId)
+    }
+    setSelectedTodoIds(newSelected)
+  }
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      const allIds = new Set(filteredTodos.map(t => t.id))
+      setSelectedTodoIds(allIds)
+    } else {
+      setSelectedTodoIds(new Set())
+    }
+  }
+
+  const handleBulkMarkComplete = async (isCompleted: boolean) => {
+    if (selectedTodoIds.size === 0) return
+
+    try {
+      setError(null)
+      await todoService.bulkMarkComplete({
+        todoIds: Array.from(selectedTodoIds),
+        isCompleted
+      })
+      setSelectedTodoIds(new Set())
+      await loadTodos()
+      await loadStatistics()
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to update todos')
+      console.error('Error bulk updating todos:', err)
     }
   }
 
@@ -390,6 +473,24 @@ const Dashboard = () => {
         )}
 
         <div className="mb-6 space-y-4">
+        {lastCompletedTodo && (
+          <div style={{ 
+            background: '#fff3cd', 
+            padding: '10px 15px', 
+            borderRadius: '8px', 
+            marginBottom: '15px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <span>Task "{lastCompletedTodo.title}" marked as complete</span>
+            <button onClick={handleUndoComplete} className="undo-button">
+              Undo
+            </button>
+          </div>
+        )}
+
+        <div className="search-section">
           <SearchBar searchQuery={searchQuery} onSearchChange={setSearchQuery} />
           <AdvancedFilters
             filters={advancedFilters}
@@ -399,6 +500,64 @@ const Dashboard = () => {
         </div>
 
         <div className="mb-6">
+        <div className="hide-completed-toggle">
+          <input
+            type="checkbox"
+            id="hideCompleted"
+            checked={hideCompleted}
+            onChange={(e) => setHideCompleted(e.target.checked)}
+          />
+          <label htmlFor="hideCompleted">Hide completed tasks</label>
+        </div>
+
+        {showStatistics && statistics && (
+          <div className="statistics-dashboard">
+            <div className="statistics-header">
+              <h3>Task Statistics</h3>
+              <button onClick={() => setShowStatistics(false)} className="cancel-button">
+                Hide
+              </button>
+            </div>
+            <div className="statistics-grid">
+              <div className="statistic-card">
+                <div className="statistic-value">{statistics.totalTodos}</div>
+                <div className="statistic-label">Total Tasks</div>
+              </div>
+              <div className="statistic-card">
+                <div className="statistic-value">{statistics.completedTodos}</div>
+                <div className="statistic-label">Completed</div>
+              </div>
+              <div className="statistic-card">
+                <div className="statistic-value">{statistics.pendingTodos}</div>
+                <div className="statistic-label">Pending</div>
+              </div>
+              <div className="statistic-card">
+                <div className="statistic-value">{statistics.completionRate.toFixed(1)}%</div>
+                <div className="statistic-label">Completion Rate</div>
+              </div>
+              <div className="statistic-card">
+                <div className="statistic-value">{statistics.overdueTodos}</div>
+                <div className="statistic-label">Overdue</div>
+              </div>
+              <div className="statistic-card">
+                <div className="statistic-value">{statistics.highPriorityTodos}</div>
+                <div className="statistic-label">High Priority</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!showStatistics && (
+          <button 
+            onClick={() => setShowStatistics(true)} 
+            className="manage-categories-button"
+            style={{ marginBottom: '15px' }}
+          >
+            Show Statistics
+          </button>
+        )}
+
+        <div className="category-section">
           <button
             onClick={() => setShowCategoryManagement(!showCategoryManagement)}
             className="btn-secondary mb-4"
@@ -648,6 +807,67 @@ const Dashboard = () => {
                       </div>
                       {todo.description && (
                         <p className="text-gray-700 dark:text-gray-300 mb-2">{todo.description}</p>
+            <>
+              {filteredTodos.length > 0 && (
+                <div className="bulk-actions">
+                  <input
+                    type="checkbox"
+                    checked={selectedTodoIds.size > 0 && selectedTodoIds.size === filteredTodos.length}
+                    onChange={(e) => handleSelectAll(e.target.checked)}
+                  />
+                  <span className="bulk-actions-label">
+                    {selectedTodoIds.size > 0 
+                      ? `${selectedTodoIds.size} selected` 
+                      : 'Select all'}
+                  </span>
+                  {selectedTodoIds.size > 0 && (
+                    <div className="bulk-action-buttons">
+                      <button
+                        onClick={() => handleBulkMarkComplete(true)}
+                        className="bulk-action-button primary"
+                      >
+                        Mark Complete ({selectedTodoIds.size})
+                      </button>
+                      <button
+                        onClick={() => handleBulkMarkComplete(false)}
+                        className="bulk-action-button secondary"
+                      >
+                        Mark Incomplete ({selectedTodoIds.size})
+                      </button>
+                      <button
+                        onClick={() => setSelectedTodoIds(new Set())}
+                        className="bulk-action-button secondary"
+                      >
+                        Clear Selection
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="todos-list">
+                {filteredTodos.map((todo) => (
+                  <div 
+                    key={todo.id} 
+                    className={`todo-item ${todo.isCompleted ? 'completed' : ''} ${todo.isArchived ? 'archived' : ''} ${todo.isOverdue ? 'overdue' : ''} ${todo.isApproachingDue ? 'approaching-due' : ''}`}
+                  >
+                    <div className="todo-content">
+                      <div className="todo-header">
+                        <input
+                          type="checkbox"
+                          checked={selectedTodoIds.has(todo.id)}
+                          onChange={(e) => handleBulkSelect(todo.id, e.target.checked)}
+                          className="todo-item-select"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <input
+                          type="checkbox"
+                          checked={todo.isCompleted}
+                          onChange={() => handleToggleComplete(todo)}
+                          className="todo-checkbox"
+                        />
+                        <h3 className="todo-title">{todo.title}</h3>
+                      {todo.isOverdue && (
+                        <span className="overdue-badge">Overdue</span>
                       )}
                       {todo.categories && todo.categories.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-2">
@@ -684,6 +904,11 @@ const Dashboard = () => {
                         )}
                         <span>Created: {new Date(todo.createdAt).toLocaleDateString()}</span>
                       </div>
+                      {todo.completedAt && (
+                        <span className="todo-date" style={{ color: '#4caf50' }}>
+                          Completed: {new Date(todo.completedAt).toLocaleDateString()}
+                        </span>
+                      )}
                     </div>
                     <div className="flex gap-2 ml-4">
                       <button 
@@ -703,6 +928,7 @@ const Dashboard = () => {
                 </div>
               )}
             />
+            </>
           )}
         </div>
       </div>
